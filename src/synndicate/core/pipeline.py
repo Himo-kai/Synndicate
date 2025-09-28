@@ -91,7 +91,7 @@ class PipelineStage(ABC):
         """Execute the pipeline stage."""
         ...
 
-    @abstractmethod
+
     @abstractmethod
     async def rollback(self, context: dict[str, Any], stage_result: StageResult) -> None:
         """Rollback the stage if needed (optional)."""
