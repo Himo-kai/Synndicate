@@ -26,7 +26,7 @@ except ImportError:
     CHROMADB_AVAILABLE = False
 
 try:
-    import faiss
+    import faiss  # noqa: F401
 
     FAISS_AVAILABLE = True
 except ImportError:
@@ -640,12 +640,13 @@ class RAGRetriever:
             )
 
             retrieval_results = []
-            for i, (doc_id, document, metadata, distance) in enumerate(
+            for _i, (_doc_id, document, metadata, distance) in enumerate(
                 zip(
                     results["ids"][0],
                     results["documents"][0],
                     results["metadatas"][0],
-                    results["distances"][0], strict=False,
+                    results["distances"][0],
+                    strict=False,
                 )
             ):
                 # Convert distance to similarity score

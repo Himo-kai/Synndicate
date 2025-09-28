@@ -327,11 +327,7 @@ class DocumentIndexer:
             ".mypy_cache",
         ]
 
-        for part in file_path.parts:
-            if part in ignore_patterns:
-                return True
-
-        return False
+        return any(part in ignore_patterns for part in file_path.parts)
 
     def _is_file_unchanged(self, file_path: Path) -> bool:
         """Check if file has changed since last indexing."""

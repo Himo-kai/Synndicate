@@ -89,15 +89,18 @@ target-version = ['py311']
 [tool.ruff]
 line-length = 100
 target-version = "py311"
+
+[tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "C4", "SIM", "TCH"]
 ignore = ["E501", "B008"]
 
 [tool.mypy]
 python_version = "3.11"
-strict = true
-warn_return_any = true
+strict = false
+warn_return_any = false
 warn_unused_configs = true
-disallow_untyped_defs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

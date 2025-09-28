@@ -216,7 +216,6 @@ class SemanticChunker(ChunkingStrategy):
 
     def _chunk_code(self, content: str, metadata: dict[str, Any] | None) -> list[Chunk]:
         """Chunk code content preserving logical boundaries."""
-        chunks = []
 
         # Try to parse as Python first
         try:
@@ -291,7 +290,7 @@ class SemanticChunker(ChunkingStrategy):
                 # Start new chunk with some overlap
                 overlap_lines = max(1, self.overlap // 50)  # Rough estimate
                 current_chunk_lines = current_chunk_lines[-overlap_lines:] + [line]
-                current_size = sum(len(l) + 1 for l in current_chunk_lines)
+                current_size = sum(len(line_text) + 1 for line_text in current_chunk_lines)
                 start_line = i - overlap_lines
             else:
                 current_chunk_lines.append(line)
@@ -465,32 +464,35 @@ class CodeAwareChunker(SemanticChunker):
 
             # Check for function/class definitions
             for pattern_name, pattern in patterns.items():
-                if pattern.match(line.strip()):
+                if (
+                    pattern.match(line.strip())
+                    and current_chunk_lines
+                    and pattern_name in ["function", "class", "struct"]
+                ):
                     # If we have a current chunk and this is a new function/class
-                    if current_chunk_lines and pattern_name in ["function", "class", "struct"]:
-                        # Finalize current chunk
-                        chunk_content = "\n".join(current_chunk_lines)
-                        chunk_metadata = metadata.copy() if metadata else {}
-                        chunk_metadata.update(
-                            {
-                                "language": language,
-                                "contains_function": current_function,
-                                "start_line": start_line,
-                                "end_line": i,
-                            }
-                        )
+                    # Finalize current chunk
+                    chunk_content = "\n".join(current_chunk_lines)
+                    chunk_metadata = metadata.copy() if metadata else {}
+                    chunk_metadata.update(
+                        {
+                            "language": language,
+                            "contains_function": current_function,
+                            "start_line": start_line,
+                            "end_line": i,
+                        }
+                    )
 
-                        chunk = self._create_chunk(
-                            chunk_content, ChunkType.CODE, start_line, i, chunk_metadata
-                        )
-                        chunks.append(chunk)
+                    chunk = self._create_chunk(
+                        chunk_content, ChunkType.CODE, start_line, i, chunk_metadata
+                    )
+                    chunks.append(chunk)
 
-                        # Start new chunk
-                        current_chunk_lines = [line]
-                        current_size = line_size
-                        start_line = i
-                        current_function = line.strip()
-                        continue
+                    # Start new chunk
+                    current_chunk_lines = [line]
+                    current_size = line_size
+                    start_line = i
+                    current_function = line.strip()
+                    continue
 
             # Add line to current chunk
             current_chunk_lines.append(line)

@@ -4,9 +4,10 @@ Audit trail and snapshot generation for observability.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 from ..observability.logging import get_logger
+
 # Import will be done locally to avoid circular imports
 from .determinism import get_config_hash
 
@@ -16,16 +17,16 @@ logger = get_logger(__name__)
 def create_trace_snapshot(
     trace_id: str,
     query: str,
-    context_keys: List[str] | None = None,
-    agents_used: List[str] | None = None,
-    execution_path: List[str] | None = None,
+    context_keys: list[str] | None = None,
+    agents_used: list[str] | None = None,
+    execution_path: list[str] | None = None,
     confidence: float | None = None,
     success: bool = True,
-    additional_data: Dict[str, Any] | None = None
-) -> Dict[str, Any]:
+    additional_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Create a comprehensive trace snapshot for audit purposes.
-    
+
     Args:
         trace_id: Unique trace identifier
         query: Original query string
@@ -35,7 +36,7 @@ def create_trace_snapshot(
         confidence: Final confidence score
         success: Whether the request succeeded
         additional_data: Any additional data to include
-        
+
     Returns:
         Complete snapshot dictionary
     """
@@ -43,18 +44,19 @@ def create_trace_snapshot(
     timings_dict = {}
     try:
         from ..observability.probe import get_trace_metrics
+
         metrics = get_trace_metrics(trace_id)
         timings_dict = {
             op: {
                 "duration_ms": data["duration_ms"],
                 "success": data["success"],
-                "error": data.get("error")
+                "error": data.get("error"),
             }
             for op, data in metrics.items()
         }
     except Exception as e:
         logger.warning(f"Failed to get trace metrics: {e}")
-    
+
     # Create comprehensive snapshot
     snapshot = {
         "trace_id": trace_id,
@@ -68,39 +70,35 @@ def create_trace_snapshot(
         "timings_ms": timings_dict,
         "metadata": {
             "total_operations": len(timings_dict),
-            "total_duration_ms": sum(
-                data["duration_ms"] for data in timings_dict.values()
-            ),
-            "failed_operations": sum(
-                1 for data in timings_dict.values() if not data["success"]
-            )
-        }
+            "total_duration_ms": sum(data["duration_ms"] for data in timings_dict.values()),
+            "failed_operations": sum(1 for data in timings_dict.values() if not data["success"]),
+        },
     }
-    
+
     # Add any additional data
     if additional_data:
         snapshot.update(additional_data)
-    
+
     return snapshot
 
 
-def save_trace_snapshot(snapshot: Dict[str, Any], artifacts_dir: Path | str = "artifacts") -> Path:
+def save_trace_snapshot(snapshot: dict[str, Any], artifacts_dir: Path | str = "artifacts") -> Path:
     """
     Save trace snapshot to artifacts directory.
-    
+
     Args:
         snapshot: Snapshot dictionary from create_trace_snapshot
         artifacts_dir: Directory to save artifacts
-        
+
     Returns:
         Path to saved snapshot file
     """
     artifacts_path = Path(artifacts_dir)
     artifacts_path.mkdir(exist_ok=True)
-    
+
     trace_id = snapshot["trace_id"]
     snapshot_file = artifacts_path / f"orchestrator_trace_{trace_id}.json"
-    
+
     try:
         snapshot_file.write_text(json.dumps(snapshot, indent=2))
         logger.info(f"Saved trace snapshot: {snapshot_file}")
@@ -110,28 +108,30 @@ def save_trace_snapshot(snapshot: Dict[str, Any], artifacts_dir: Path | str = "a
         raise
 
 
-def save_performance_data(trace_id: str, perf_data: Dict[str, Any], artifacts_dir: Path | str = "artifacts") -> Path:
+def save_performance_data(
+    trace_id: str, perf_data: dict[str, Any], artifacts_dir: Path | str = "artifacts"
+) -> Path:
     """
     Save performance data in JSONL format.
-    
+
     Args:
         trace_id: Trace identifier
         perf_data: Performance data dictionary
         artifacts_dir: Directory to save artifacts
-        
+
     Returns:
         Path to saved performance file
     """
     artifacts_path = Path(artifacts_dir)
     artifacts_path.mkdir(exist_ok=True)
-    
+
     perf_file = artifacts_path / f"perf_{trace_id}.jsonl"
-    
+
     try:
         # Append to JSONL file (one JSON object per line)
         with perf_file.open("a") as f:
             f.write(json.dumps(perf_data) + "\n")
-        
+
         logger.info(f"Saved performance data: {perf_file}")
         return perf_file
     except Exception as e:
@@ -140,34 +140,33 @@ def save_performance_data(trace_id: str, perf_data: Dict[str, Any], artifacts_di
 
 
 def create_audit_bundle(
-    trace_snapshots: List[Dict[str, Any]],
-    output_dir: Path | str = "synndicate_audit"
+    trace_snapshots: list[dict[str, Any]], output_dir: Path | str = "synndicate_audit"
 ) -> Path:
     """
     Create complete audit bundle with all required files.
-    
+
     Args:
         trace_snapshots: List of trace snapshots to include
         output_dir: Output directory for audit bundle
-        
+
     Returns:
         Path to audit bundle directory
     """
     bundle_path = Path(output_dir)
     bundle_path.mkdir(exist_ok=True)
-    
+
     # Create subdirectories
     (bundle_path / "configs").mkdir(exist_ok=True)
     (bundle_path / "artifacts").mkdir(exist_ok=True)
     (bundle_path / "logs").mkdir(exist_ok=True)
     (bundle_path / "endpoints").mkdir(exist_ok=True)
-    
+
     logger.info(f"Created audit bundle structure: {bundle_path}")
-    
+
     # Save trace snapshots
     for snapshot in trace_snapshots:
         trace_file = bundle_path / "artifacts" / f"orchestrator_trace_{snapshot['trace_id']}.json"
         trace_file.write_text(json.dumps(snapshot, indent=2))
-    
+
     logger.info(f"Audit bundle ready: {bundle_path}")
     return bundle_path

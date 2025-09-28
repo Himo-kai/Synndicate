@@ -18,7 +18,7 @@ from opentelemetry import trace
 from opentelemetry.trace import Span, Status, StatusCode, Tracer
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
-from .logging import get_logger, trace_id_ctx
+from .logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -45,6 +45,7 @@ class TracingManager:
 
         # Set trace ID in logging context
         from .logging import set_trace_id
+
         trace_id = format(span.get_span_context().trace_id, "032x")
         set_trace_id(trace_id)
 
@@ -54,9 +55,7 @@ class TracingManager:
         """Extract trace context from HTTP headers."""
         return self.propagator.extract(headers)
 
-    def inject_context(
-        self, headers: dict[str, str], context: trace.Context | None = None
-    ) -> None:
+    def inject_context(self, headers: dict[str, str], context: trace.Context | None = None) -> None:
         """Inject trace context into HTTP headers."""
         ctx = context or trace.get_current()
         self.propagator.inject(headers, ctx)

@@ -91,6 +91,8 @@ class PipelineStage(ABC):
         """Execute the pipeline stage."""
         ...
 
+    @abstractmethod
+    @abstractmethod
     async def rollback(self, context: dict[str, Any], stage_result: StageResult) -> None:
         """Rollback the stage if needed (optional)."""
         pass
@@ -394,7 +396,7 @@ class Pipeline:
         logger.info(f"Starting streaming pipeline '{self.name}'")
 
         try:
-            for level, stage_names in enumerate(self._execution_order):
+            for _level, stage_names in enumerate(self._execution_order):
                 # Execute stages in parallel within each level
                 tasks = []
                 for stage_name in stage_names:

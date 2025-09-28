@@ -25,25 +25,25 @@ Usage:
     Basic logging with trace context:
     >>> from synndicate.observability.logging import get_logger
     >>> from synndicate.observability.probe import probe
-    >>> 
+    >>>
     >>> logger = get_logger(__name__)
-    >>> 
+    >>>
     >>> @probe("my_operation")
     >>> async def my_function(data: str) -> str:
     ...     logger.info("Processing data", data_length=len(data))
     ...     result = await process_data(data)
     ...     return result
-    
+
     Trace ID propagation:
     >>> from synndicate.observability.logging import set_trace_id, get_trace_id
-    >>> 
+    >>>
     >>> trace_id = "abc123def456"
     >>> set_trace_id(trace_id)
     >>> current_trace = get_trace_id()  # Returns "abc123def456"
-    
+
     Performance metrics:
     >>> from synndicate.observability.probe import get_trace_metrics
-    >>> 
+    >>>
     >>> metrics = get_trace_metrics(trace_id)
     >>> # {"my_operation": {"duration_ms": 125.3, "success": true}}
 

@@ -135,7 +135,7 @@ class HealthChecker:
         results = {}
 
         # Run checks concurrently
-        tasks = [(name, self.run_check(name)) for name in self._checks.keys()]
+        tasks = [(name, self.run_check(name)) for name in self._checks]
 
         for name, task in tasks:
             try:

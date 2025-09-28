@@ -8,7 +8,6 @@ Improvements over original:
 - Agent lifecycle management
 """
 
-
 import httpx
 
 from ..config.settings import ModelEndpoint, Settings
@@ -60,9 +59,7 @@ class AgentFactory:
         logger.info(f"Created {agent_type} agent with model {endpoint.name}")
         return agent
 
-    def get_or_create_agent(
-        self, agent_type: str, endpoint: ModelEndpoint | None = None
-    ) -> Agent:
+    def get_or_create_agent(self, agent_type: str, endpoint: ModelEndpoint | None = None) -> Agent:
         """Get cached agent or create new one."""
         cache_key = f"{agent_type}_{endpoint.name if endpoint else 'default'}"
 

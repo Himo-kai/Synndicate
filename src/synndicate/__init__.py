@@ -2,7 +2,7 @@
 Synndicate AI - Enterprise-Grade Multi-Agent AI Orchestration System
 
 A production-ready AI orchestration platform with comprehensive observability,
-deterministic behavior, and audit-ready architecture. Features local language 
+deterministic behavior, and audit-ready architecture. Features local language
 model integration, advanced RAG capabilities, and full trace-based monitoring.
 
 Key Features:
@@ -17,11 +17,11 @@ Key Features:
 Quick Start:
     >>> from synndicate import Orchestrator
     >>> from synndicate.config.container import Container
-    >>> 
+    >>>
     >>> # Initialize with deterministic startup
     >>> container = Container()
     >>> orchestrator = Orchestrator(container)
-    >>> 
+    >>>
     >>> # Process query with full observability
     >>> result = await orchestrator.process_query(
     ...     "Create a Python function to parse log files"
@@ -34,7 +34,7 @@ API Server:
     $ make dev  # Start development server
     # or
     $ uvicorn synndicate.api.server:app --host 0.0.0.0 --port 8000
-    
+
     Health check with component status:
     $ curl http://localhost:8000/health | jq .
     {
@@ -42,7 +42,7 @@ API Server:
       "config_hash": "28411d9a...",
       "components": {"orchestrator": "healthy", "models": "healthy"}
     }
-    
+
     Process query with trace ID:
     $ curl -X POST http://localhost:8000/query \
       -H 'Content-Type: application/json' \
@@ -60,19 +60,19 @@ Observability & Audit:
     - 📈 Performance data: artifacts/perf_<trace_id>.jsonl
     - 📋 Coverage reports: artifacts/coverage.xml
     - 🔍 Structured logs with trace IDs: t=<ISO8601> trace=<id> ms=<dur>
-    
+
     Generate audit bundle:
     $ make audit-bundle
     $ ls synndicate_audit/
     configs/ artifacts/ logs/ endpoints/ tree.txt
-    
+
 Configuration:
     Deterministic configuration with environment variables:
     - SYN_SEED=1337 (reproducible RNG seeding)
     - SYN_MODELS__PLANNER__NAME=gpt-4 (model endpoints)
     - SYN_OBSERVABILITY__LOG_LEVEL=INFO (logging configuration)
     - SYN_API__PORT=8000 (server configuration)
-    
+
     Config hash for audit compliance:
     CONFIG_SHA256 28411d9ae8a1861a86fe220d625fddfdc524d8317297a85ceec37280002f22b2
 
@@ -81,7 +81,7 @@ Architecture:
     API Layer (FastAPI) → Orchestration → Agents → Models → RAG → Storage
            ↓                    ↓         ↓        ↓       ↓        ↓
     Trace IDs → Performance → Agent State → Timing → Context → Artifacts
-    
+
 Performance:
     Production-ready performance with monitoring:
     - Language Model: TinyLlama 1.1B at 9.4 words/sec average

@@ -19,13 +19,18 @@ from enum import Enum
 from typing import Any, Protocol
 
 import httpx
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from ..config.settings import AgentConfig, ModelEndpoint
 from ..observability.logging import get_logger, get_trace_id
 from ..observability.metrics import counter, timer
-from ..observability.tracing import trace_span
 from ..observability.probe import probe
+from ..observability.tracing import trace_span
 
 logger = get_logger(__name__)
 
@@ -255,17 +260,21 @@ class Agent(ABC):
     async def process(self, query: str, context: dict[str, Any] | None = None) -> AgentResponse:
         """Process a query and return a structured response."""
         start_time = asyncio.get_event_loop().time()
-        
+
         # Get trace ID from context or current trace
         ctx = context or {}
         trace_id = ctx.get("trace_id") or get_trace_id()
         agent_name = self.__class__.__name__.lower().replace("agent", "")
-        
+
         with probe(f"agent.{agent_name}.process", trace_id):
             prompt = self._build_prompt(query, ctx)
-            
-            logger.info(f"Processing query with {agent_name} agent", 
-                       agent=agent_name, query_length=len(query), trace_id=trace_id)
+
+            logger.info(
+                f"Processing query with {agent_name} agent",
+                agent=agent_name,
+                query_length=len(query),
+                trace_id=trace_id,
+            )
 
         try:
             reasoning, final_response = await self._call_model(prompt)

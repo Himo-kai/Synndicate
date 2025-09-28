@@ -111,11 +111,10 @@ class Transition:
 
     async def execute_action(self, context: StateContext) -> None:
         """Execute transition action if present."""
-        if self.action:
-            if hasattr(self.action, "__call__"):
-                result = self.action(context)
-                if hasattr(result, "__await__"):
-                    await result
+        if self.action and callable(self.action):
+            result = self.action(context)
+            if hasattr(result, "__await__"):
+                await result
 
 
 class StateMachine:

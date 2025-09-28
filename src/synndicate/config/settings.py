@@ -26,7 +26,7 @@ class ModelEndpoint(BaseModel):
     max_retries: int = Field(3, description="Maximum number of retries")
 
     @validator("base_url")
-    def validate_base_url(cls, v):
+    def validate_base_url(self, v):
         if v != "local" and not v.startswith(("http://", "https://")):
             raise ValueError("base_url must start with http:// or https://")
         return v.rstrip("/")
@@ -161,7 +161,7 @@ class Settings(BaseSettings):
         self.rag.persist_directory.mkdir(parents=True, exist_ok=True)
 
     @validator("environment")
-    def validate_environment(cls, v):
+    def validate_environment(self, v):
         allowed = {"development", "staging", "production"}
         if v not in allowed:
             raise ValueError(f"environment must be one of {allowed}")

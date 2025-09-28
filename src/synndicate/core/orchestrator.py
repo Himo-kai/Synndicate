@@ -18,11 +18,10 @@ from typing import Any
 from ..agents.base import AgentResponse
 from ..agents.factory import AgentFactory
 from ..config.container import Container
-from ..observability.logging import get_logger, set_trace_id, get_trace_id
+from ..observability.logging import get_logger, get_trace_id, set_trace_id
 from ..observability.metrics import get_metrics_collector
 from ..observability.probe import probe
 from .audit import create_trace_snapshot, save_trace_snapshot
-from .determinism import ensure_deterministic_startup
 from .pipeline import AgentStage, ConditionalStage, Pipeline, PipelineResult
 from .state_machine import State, StateContext, StateMachine, StateType
 
@@ -169,13 +168,13 @@ class RevisionState(State):
         async with coder:
             revision_query = f"""
             Please revise the following code based on the review feedback:
-            
+
             Original Code:
             {code_response.response}
-            
+
             Review Feedback:
             {review_response.response}
-            
+
             Provide the improved version addressing the feedback.
             """
 
@@ -306,14 +305,17 @@ class Orchestrator:
         # Generate trace ID if not already set
         trace_id = get_trace_id() or f"{int(time.time() * 1000):x}{hash(query) & 0xFFFF:04x}"
         set_trace_id(trace_id)
-        
+
         start_time = time.time()
         ctx = context or {}
         ctx["trace_id"] = trace_id
 
         with probe("orchestrator.process_query", trace_id):
-            logger.info(f"Processing query with workflow '{workflow}': {query[:100]}...", 
-                       workflow=workflow, query_length=len(query))
+            logger.info(
+                f"Processing query with workflow '{workflow}': {query[:100]}...",
+                workflow=workflow,
+                query_length=len(query),
+            )
 
         try:
             # Determine workflow
@@ -350,8 +352,8 @@ class Orchestrator:
                     additional_data={
                         "workflow": workflow,
                         "execution_time_s": execution_time,
-                        "metadata": result.metadata
-                    }
+                        "metadata": result.metadata,
+                    },
                 )
                 save_trace_snapshot(snapshot)
             except Exception as e:
@@ -376,8 +378,8 @@ class Orchestrator:
                     additional_data={
                         "workflow": workflow,
                         "execution_time_s": execution_time,
-                        "error": str(e)
-                    }
+                        "error": str(e),
+                    },
                 )
                 save_trace_snapshot(snapshot)
             except Exception as snapshot_error:

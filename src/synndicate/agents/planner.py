@@ -8,6 +8,7 @@ Improvements over original:
 - Dependency detection
 """
 
+import contextlib
 import re
 from dataclasses import dataclass
 from enum import Enum
@@ -179,10 +180,8 @@ Always structure your response with clear sections and be specific about require
             task_type = TaskType.ANALYSIS  # default
             type_match = re.search(r"(?:Task Type|TASK TYPE):\s*(\w+)", response, re.IGNORECASE)
             if type_match:
-                try:
+                with contextlib.suppress(ValueError):
                     task_type = TaskType(type_match.group(1).lower())
-                except ValueError:
-                    pass
 
             # Extract complexity
             complexity = TaskComplexity.MEDIUM  # default
@@ -190,10 +189,8 @@ Always structure your response with clear sections and be specific about require
                 r"(?:Complexity|COMPLEXITY):\s*(\w+)", response, re.IGNORECASE
             )
             if complexity_match:
-                try:
+                with contextlib.suppress(ValueError):
                     complexity = TaskComplexity(complexity_match.group(1).lower())
-                except ValueError:
-                    pass
 
             # Extract steps
             steps = []
