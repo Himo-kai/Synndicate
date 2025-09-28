@@ -178,3 +178,4 @@ src/synndicate/
 ---
 
 **Built with ❤️ for enterprise AI orchestration**
+[![CI/CD Pipeline](https://github.com/Himo-kai/Synndicate/actions/workflows/ci.yml/badge.svg)](https://github.com/Himo-kai/Synndicate/actions/workflows/ci.yml)
