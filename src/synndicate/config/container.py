@@ -107,7 +107,15 @@ def setup_container(settings: Settings | None = None) -> Container:
     def _rag_retriever_factory(c: Container):
         from ..rag.retriever import RAGRetriever
 
-        return RAGRetriever(c.settings.rag)
+        rag = c.settings.rag
+        return RAGRetriever(
+            embedding_model=rag.embedding_model,
+            vector_store_path=str(rag.persist_directory) if rag.persist_directory else None,
+            max_results=rag.max_results,
+            min_relevance_score=rag.similarity_threshold,
+            embedding_cache_path=str(rag.embedding_cache_path) if rag.embedding_cache_path else None,
+            cache_max_entries=rag.cache_max_entries,
+        )
 
     def _executor_factory(c: Container):
         from ..execution.executor import CodeExecutor

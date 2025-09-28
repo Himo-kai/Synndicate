@@ -10,6 +10,9 @@ Improvements over original:
 """
 
 import asyncio
+import json
+import os
+from pathlib import Path
 import re
 from dataclasses import dataclass, field
 from enum import Enum
@@ -39,6 +42,7 @@ try:
 except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
+import httpx
 from ..observability.logging import get_logger
 from .chunking import Chunk, ChunkType
 
@@ -150,17 +154,24 @@ class RAGRetriever:
         vector_store_path: str | None = None,
         max_results: int = 10,
         min_relevance_score: float = 0.3,
+        embedding_cache_path: str | None = None,
+        cache_max_entries: int = 100_000,
     ):
         self.embedding_model_name = embedding_model
         self.vector_store_path = vector_store_path
         self.max_results = max_results
         self.min_relevance_score = min_relevance_score
+        self.embedding_cache_path = embedding_cache_path
+        self.cache_max_entries = cache_max_entries
 
         # Initialize components
         self._embedding_model = None
         self._vector_store = None
         self._keyword_index: dict[str, list[tuple[str, Chunk]]] = {}
         self._chunks: dict[str, Chunk] = {}
+        self._embedding_cache: dict[str, list[float]] = {}
+        self._embedding_cache_dirty = False
+        self._vector_store_kind: str | None = None  # "http" | "chroma" | None
 
         # Performance tracking
         self._query_count = 0
@@ -180,13 +191,32 @@ class RAGRetriever:
         else:
             logger.warning("sentence-transformers not available, vector search disabled")
 
+        # Load embedding cache (if provided)
+        if self.embedding_cache_path:
+            try:
+                path = Path(self.embedding_cache_path)
+                if path.exists():
+                    with path.open("r", encoding="utf-8") as f:
+                        self._embedding_cache = json.load(f)
+                        logger.info(
+                            f"Loaded embedding cache with {len(self._embedding_cache)} entries from {path}"
+                        )
+            except Exception as e:
+                logger.warning(f"Failed to load embedding cache: {e}")
+
         # Initialize vector store
-        if CHROMADB_AVAILABLE and self.vector_store_path:
+        vector_api = os.getenv("SYN_RAG_VECTOR_API")
+        if vector_api:
+            self._vector_store = _HttpVectorStore(vector_api)
+            logger.info(f"Using remote vector store API at: {vector_api}")
+            self._vector_store_kind = "http"
+        elif CHROMADB_AVAILABLE and self.vector_store_path:
             try:
                 self._vector_store = chromadb.PersistentClient(
                     path=self.vector_store_path, settings=Settings(anonymized_telemetry=False)
                 )
                 logger.info(f"Initialized ChromaDB at: {self.vector_store_path}")
+                self._vector_store_kind = "chroma"
             except Exception as e:
                 logger.warning(f"Failed to initialize ChromaDB: {e}")
         else:
@@ -208,6 +238,9 @@ class RAGRetriever:
                 await self._add_to_vector_store(chunk_id, chunk)
 
         logger.info(f"Successfully indexed {len(chunks)} chunks")
+
+        # Persist cache if needed
+        await self._maybe_flush_embedding_cache()
 
     async def retrieve(
         self,
@@ -241,6 +274,17 @@ class RAGRetriever:
             # Re-rank results with context
             reranked_results = await self._rerank_with_context(filtered_results, query_context)
 
+            # Clamp final scores to [0,1]
+            for r in reranked_results:
+                try:
+                    if r.score < 0.0:
+                        r.score = 0.0
+                    elif r.score > 1.0:
+                        r.score = 1.0
+                except Exception:
+                    # If score is non-numeric for any reason, drop the item
+                    continue
+
             # Update metrics
             self._query_count += 1
             retrieval_time = asyncio.get_event_loop().time() - start_time
@@ -265,177 +309,25 @@ class RAGRetriever:
 
         try:
             # Generate query embedding
-            query_embedding = self._embedding_model.encode([query])[0]
+            query_embedding = await self._get_or_create_embedding(query)
+            if query_embedding is None:
+                return []
 
             if self._vector_store:
-                # Use ChromaDB for search
-                return await self._chromadb_search(query_embedding, max_results)
+                # Use configured vector store for search
+                if self._vector_store_kind == "chroma":
+                    return await self._chromadb_search(np.asarray(query_embedding), max_results)
+                if self._vector_store_kind == "http":
+                    return await self._http_vector_search(np.asarray(query_embedding), max_results)
+                # Fallback to memory search
+                return await self._memory_vector_search(np.asarray(query_embedding), max_results)
             else:
                 # Use in-memory similarity search
-                return await self._memory_vector_search(query_embedding, max_results)
+                return await self._memory_vector_search(np.asarray(query_embedding), max_results)
 
         except Exception as e:
             logger.error(f"Vector search failed: {e}")
             return []
-
-    async def _keyword_search(self, query: str, max_results: int) -> list[RetrievalResult]:
-        """Perform keyword-based search."""
-        results = []
-        query_terms = self._extract_keywords(query.lower())
-
-        # Score chunks based on keyword matches
-        chunk_scores: dict[str, float] = {}
-
-        for term in query_terms:
-            if term in self._keyword_index:
-                for chunk_id, chunk in self._keyword_index[term]:
-                    if chunk_id not in chunk_scores:
-                        chunk_scores[chunk_id] = 0.0
-
-                    # Simple TF-IDF-like scoring
-                    term_frequency = chunk.content.lower().count(term)
-                    doc_frequency = len(self._keyword_index[term])
-                    total_docs = len(self._chunks)
-
-                    idf = np.log(total_docs / (doc_frequency + 1))
-                    score = term_frequency * idf
-                    chunk_scores[chunk_id] += score
-
-        # Normalize scores and create results
-        if chunk_scores:
-            max_score = max(chunk_scores.values())
-            for chunk_id, score in chunk_scores.items():
-                normalized_score = score / max_score if max_score > 0 else 0.0
-                chunk = self._chunks[chunk_id]
-
-                result = RetrievalResult.from_chunk(
-                    chunk=chunk,
-                    score=normalized_score,
-                    search_mode=SearchMode.KEYWORD_ONLY,
-                    metadata={
-                        "keyword_matches": len(
-                            [t for t in query_terms if t in chunk.content.lower()]
-                        )
-                    },
-                )
-                results.append(result)
-
-        # Sort by score and return top results
-        results.sort(key=lambda x: x.score, reverse=True)
-        return results[:max_results]
-
-    async def _hybrid_search(self, query: str, max_results: int) -> list[RetrievalResult]:
-        """Perform hybrid search combining vector and keyword search."""
-        # Get results from both methods
-        vector_results = await self._vector_search(query, max_results * 2)
-        keyword_results = await self._keyword_search(query, max_results * 2)
-
-        # Combine and deduplicate results
-        combined_results: dict[str, RetrievalResult] = {}
-
-        # Add vector results
-        for result in vector_results:
-            chunk_id = self._generate_chunk_id(result.chunk)
-            combined_results[chunk_id] = result
-            combined_results[chunk_id].search_mode = SearchMode.HYBRID
-
-        # Merge keyword results
-        for result in keyword_results:
-            chunk_id = self._generate_chunk_id(result.chunk)
-            if chunk_id in combined_results:
-                # Combine scores (weighted average)
-                existing_result = combined_results[chunk_id]
-                combined_score = (existing_result.score * 0.6) + (result.score * 0.4)
-                existing_result.score = combined_score
-                existing_result.metadata.update(result.metadata)
-            else:
-                result.search_mode = SearchMode.HYBRID
-                combined_results[chunk_id] = result
-
-        # Sort by combined score
-        results = list(combined_results.values())
-        results.sort(key=lambda x: x.score, reverse=True)
-
-        return results[:max_results]
-
-    async def _semantic_search(
-        self, query_context: QueryContext, max_results: int
-    ) -> list[RetrievalResult]:
-        """Perform semantic search with context understanding."""
-        # Start with hybrid search
-        results = await self._hybrid_search(query_context.query, max_results * 2)
-
-        # Apply semantic filtering and boosting
-        semantic_results = []
-
-        for result in results:
-            # Boost score based on chunk type relevance
-            type_boost = self._get_type_relevance_boost(
-                result.chunk.chunk_type, query_context.task_type
-            )
-
-            # Boost score based on domain relevance
-            domain_boost = self._get_domain_relevance_boost(
-                result.chunk, query_context.domain_context
-            )
-
-            # Apply conversation context boost
-            context_boost = self._get_context_relevance_boost(
-                result.chunk, query_context.conversation_history
-            )
-
-            # Calculate final semantic score
-            semantic_score = result.score * (1 + type_boost + domain_boost + context_boost)
-            semantic_score = min(semantic_score, 1.0)  # Cap at 1.0
-
-            semantic_result = RetrievalResult.from_chunk(
-                chunk=result.chunk,
-                score=semantic_score,
-                search_mode=SearchMode.SEMANTIC,
-                metadata={
-                    **result.metadata,
-                    "type_boost": type_boost,
-                    "domain_boost": domain_boost,
-                    "context_boost": context_boost,
-                    "original_score": result.score,
-                },
-            )
-            semantic_results.append(semantic_result)
-
-        # Sort by semantic score
-        semantic_results.sort(key=lambda x: x.score, reverse=True)
-        return semantic_results[:max_results]
-
-    async def _rerank_with_context(
-        self, results: list[RetrievalResult], query_context: QueryContext
-    ) -> list[RetrievalResult]:
-        """Re-rank results based on additional context."""
-        if not results:
-            return results
-
-        # Apply diversity penalty to avoid too similar results
-        diverse_results = self._apply_diversity_penalty(results)
-
-        # Apply user preference boosting
-        preference_boosted = self._apply_preference_boosting(
-            diverse_results, query_context.user_preferences
-        )
-
-        return preference_boosted
-
-    def _generate_chunk_id(self, chunk: Chunk) -> str:
-        """Generate unique ID for a chunk."""
-        content_hash = hash(chunk.content)
-        return f"{chunk.chunk_type.value}_{chunk.start_index}_{content_hash}"
-
-    async def _add_to_keyword_index(self, chunk_id: str, chunk: Chunk) -> None:
-        """Add chunk to keyword index."""
-        keywords = self._extract_keywords(chunk.content.lower())
-
-        for keyword in keywords:
-            if keyword not in self._keyword_index:
-                self._keyword_index[keyword] = []
-            self._keyword_index[keyword].append((chunk_id, chunk))
 
     async def _add_to_vector_store(self, chunk_id: str, chunk: Chunk) -> None:
         """Add chunk to vector store."""
@@ -444,236 +336,33 @@ class RAGRetriever:
 
         try:
             # Generate embedding
-            embedding = self._embedding_model.encode([chunk.content])[0]
+            embedding = await self._get_or_create_embedding(chunk.content)
+            if embedding is None:
+                return
 
             if self._vector_store:
-                # Add to ChromaDB
-                collection = self._vector_store.get_or_create_collection("chunks")
-                collection.add(
-                    ids=[chunk_id],
-                    embeddings=[embedding.tolist()],
-                    documents=[chunk.content],
-                    metadatas=[chunk.metadata],
-                )
+                # Add to configured store
+                if self._vector_store_kind == "chroma":
+                    collection = self._vector_store.get_or_create_collection("chunks")
+                    collection.add(
+                        ids=[chunk_id],
+                        embeddings=[embedding.tolist()],
+                        documents=[chunk.content],
+                        metadatas=[chunk.metadata],
+                    )
+                elif self._vector_store_kind == "http":
+                    await self._vector_store.add_embeddings(
+                        [
+                            {
+                                "id": chunk_id,
+                                "embedding": embedding.tolist(),
+                                "document": chunk.content,
+                                "metadata": chunk.metadata,
+                            }
+                        ]
+                    )
         except Exception as e:
             logger.error(f"Failed to add chunk to vector store: {e}")
-
-    def _extract_keywords(self, text: str) -> list[str]:
-        """Extract keywords from text."""
-        # Simple keyword extraction (can be enhanced with NLP libraries)
-        # Remove punctuation and split into words
-        words = re.findall(r"\b\w+\b", text.lower())
-
-        # Filter out common stop words
-        stop_words = {
-            "the",
-            "a",
-            "an",
-            "and",
-            "or",
-            "but",
-            "in",
-            "on",
-            "at",
-            "to",
-            "for",
-            "of",
-            "with",
-            "by",
-            "is",
-            "are",
-            "was",
-            "were",
-            "be",
-            "been",
-            "have",
-            "has",
-            "had",
-            "do",
-            "does",
-            "did",
-            "will",
-            "would",
-            "could",
-            "should",
-            "this",
-            "that",
-            "these",
-            "those",
-            "i",
-            "you",
-            "he",
-            "she",
-            "it",
-            "we",
-            "they",
-        }
-
-        keywords = [word for word in words if len(word) > 2 and word not in stop_words]
-        return list(set(keywords))  # Remove duplicates
-
-    def _get_type_relevance_boost(self, chunk_type: ChunkType, task_type: str | None) -> float:
-        """Get relevance boost based on chunk type and task type."""
-        if not task_type:
-            return 0.0
-
-        # Define type relevance mappings
-        type_mappings = {
-            "coding": {ChunkType.CODE: 0.3, ChunkType.DOCUMENTATION: 0.1},
-            "documentation": {ChunkType.DOCUMENTATION: 0.3, ChunkType.MARKDOWN: 0.2},
-            "analysis": {ChunkType.TEXT: 0.2, ChunkType.DOCUMENTATION: 0.1},
-            "debugging": {ChunkType.CODE: 0.3, ChunkType.COMMENT: 0.1},
-        }
-
-        task_lower = task_type.lower()
-        for task_key, boosts in type_mappings.items():
-            if task_key in task_lower:
-                return boosts.get(chunk_type, 0.0)
-
-        return 0.0
-
-    def _get_domain_relevance_boost(self, chunk: Chunk, domain_context: str | None) -> float:
-        """Get relevance boost based on domain context."""
-        if not domain_context:
-            return 0.0
-
-        domain_lower = domain_context.lower()
-        content_lower = chunk.content.lower()
-
-        # Simple domain keyword matching
-        domain_keywords = self._extract_keywords(domain_lower)
-        content_keywords = self._extract_keywords(content_lower)
-
-        matches = len(set(domain_keywords) & set(content_keywords))
-        total_domain_keywords = len(domain_keywords)
-
-        if total_domain_keywords == 0:
-            return 0.0
-
-        return min(0.2, (matches / total_domain_keywords) * 0.2)
-
-    def _get_context_relevance_boost(self, chunk: Chunk, conversation_history: list[str]) -> float:
-        """Get relevance boost based on conversation context."""
-        if not conversation_history:
-            return 0.0
-
-        # Extract keywords from recent conversation
-        recent_context = " ".join(conversation_history[-3:])
-        context_keywords = set(self._extract_keywords(recent_context.lower()))
-        chunk_keywords = set(self._extract_keywords(chunk.content.lower()))
-
-        if not context_keywords:
-            return 0.0
-
-        matches = len(context_keywords & chunk_keywords)
-        return min(0.15, (matches / len(context_keywords)) * 0.15)
-
-    def _apply_diversity_penalty(self, results: list[RetrievalResult]) -> list[RetrievalResult]:
-        """Apply diversity penalty to avoid too similar results."""
-        if len(results) <= 1:
-            return results
-
-        diverse_results = [results[0]]  # Always include top result
-
-        for result in results[1:]:
-            # Check similarity with already selected results
-            max_similarity = 0.0
-
-            for selected in diverse_results:
-                similarity = self._calculate_content_similarity(
-                    result.chunk.content, selected.chunk.content
-                )
-                max_similarity = max(max_similarity, similarity)
-
-            # Apply penalty based on similarity
-            diversity_penalty = max_similarity * 0.3
-            result.score = result.score * (1 - diversity_penalty)
-            diverse_results.append(result)
-
-        # Re-sort after applying penalties
-        diverse_results.sort(key=lambda x: x.score, reverse=True)
-        return diverse_results
-
-    def _apply_preference_boosting(
-        self, results: list[RetrievalResult], user_preferences: dict[str, Any]
-    ) -> list[RetrievalResult]:
-        """Apply user preference boosting to results."""
-        if not user_preferences:
-            return results
-
-        for result in results:
-            # Boost based on preferred file types
-            preferred_types = user_preferences.get("file_types", [])
-            if preferred_types:
-                file_ext = result.chunk.metadata.get("file_extension", "")
-                if file_ext in preferred_types:
-                    result.score = min(1.0, result.score * 1.1)
-
-            # Boost based on preferred content types
-            preferred_content = user_preferences.get("content_types", [])
-            if preferred_content and result.chunk.chunk_type.value in preferred_content:
-                result.score = min(1.0, result.score * 1.05)
-
-        return results
-
-    def _calculate_content_similarity(self, content1: str, content2: str) -> float:
-        """Calculate simple content similarity between two texts."""
-        words1 = set(self._extract_keywords(content1.lower()))
-        words2 = set(self._extract_keywords(content2.lower()))
-
-        if not words1 or not words2:
-            return 0.0
-
-        intersection = len(words1 & words2)
-        union = len(words1 | words2)
-
-        return intersection / union if union > 0 else 0.0
-
-    async def _chromadb_search(
-        self, query_embedding: np.ndarray, max_results: int
-    ) -> list[RetrievalResult]:
-        """Search using ChromaDB."""
-        try:
-            collection = self._vector_store.get_or_create_collection("chunks")
-            results = collection.query(
-                query_embeddings=[query_embedding.tolist()], n_results=max_results
-            )
-
-            retrieval_results = []
-            for _i, (_doc_id, document, metadata, distance) in enumerate(
-                zip(
-                    results["ids"][0],
-                    results["documents"][0],
-                    results["metadatas"][0],
-                    results["distances"][0],
-                    strict=False,
-                )
-            ):
-                # Convert distance to similarity score
-                score = 1.0 / (1.0 + distance)
-
-                # Reconstruct chunk (simplified)
-                chunk = Chunk(
-                    content=document,
-                    chunk_type=ChunkType.TEXT,  # Would need to store and retrieve actual type
-                    start_index=0,
-                    end_index=len(document),
-                    metadata=metadata,
-                )
-
-                result = RetrievalResult.from_chunk(
-                    chunk=chunk,
-                    score=score,
-                    search_mode=SearchMode.VECTOR_ONLY,
-                    metadata={"chromadb_distance": distance},
-                )
-                retrieval_results.append(result)
-
-            return retrieval_results
-
-        except Exception as e:
-            logger.error(f"ChromaDB search failed: {e}")
-            return []
 
     async def _memory_vector_search(
         self, query_embedding: np.ndarray, max_results: int
@@ -686,25 +375,34 @@ class RAGRetriever:
 
         for chunk_id, chunk in self._chunks.items():
             try:
-                # Generate embedding for chunk (this would be cached in practice)
-                chunk_embedding = self._embedding_model.encode([chunk.content])[0]
+                # Get cached embedding for chunk
+                chunk_embedding = await self._get_or_create_embedding(chunk.content)
+                if chunk_embedding is None:
+                    continue
 
                 # Calculate cosine similarity
-                similarity = np.dot(query_embedding, chunk_embedding) / (
-                    np.linalg.norm(query_embedding) * np.linalg.norm(chunk_embedding)
+                cosine = float(
+                    np.dot(query_embedding, chunk_embedding)
+                    / (np.linalg.norm(query_embedding) * np.linalg.norm(chunk_embedding))
                 )
+
+                # Normalize to [0,1]
+                similarity = (cosine + 1.0) / 2.0
+                if similarity < 0.0:
+                    similarity = 0.0
+                elif similarity > 1.0:
+                    similarity = 1.0
 
                 result = RetrievalResult.from_chunk(
                     chunk=chunk,
-                    score=float(similarity),
+                    score=similarity,
                     search_mode=SearchMode.VECTOR_ONLY,
-                    metadata={"cosine_similarity": float(similarity)},
+                    metadata={"cosine_similarity": float(cosine)},
                 )
                 results.append(result)
 
             except Exception as e:
-                logger.error(f"Failed to compute similarity for chunk {chunk_id}: {e}")
-                continue
+                logger.error(f"Error computing similarity for chunk {chunk_id}: {e}")
 
         # Sort by score and return top results
         results.sort(key=lambda x: x.score, reverse=True)
@@ -724,4 +422,240 @@ class RAGRetriever:
             "embedding_model": self.embedding_model_name,
             "vector_store_available": self._vector_store is not None,
             "embedding_model_available": self._embedding_model is not None,
+            "embedding_cache_entries": len(self._embedding_cache),
+            "vector_store_type": self._vector_store_kind or "none",
         }
+
+    async def _maybe_flush_embedding_cache(self) -> None:
+        """Persist embedding cache to disk if configured and dirty."""
+        if not self.embedding_cache_path or not self._embedding_cache_dirty:
+            return
+        try:
+            path = Path(self.embedding_cache_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(self._embedding_cache, f)
+            self._embedding_cache_dirty = False
+            logger.info(f"Flushed embedding cache to {path}")
+        except Exception as e:
+            logger.warning(f"Failed to flush embedding cache: {e}")
+
+    async def _get_or_create_embedding(self, text: str) -> np.ndarray | None:
+        """Get embedding from cache or compute and store it."""
+        if not self._embedding_model:
+            return None
+        key = self._embedding_cache_key(text)
+        if key in self._embedding_cache:
+            return np.asarray(self._embedding_cache[key], dtype=np.float32)
+        # Compute and cache
+        emb = self._embedding_model.encode([text])[0]
+        # Size control
+        if len(self._embedding_cache) >= self.cache_max_entries:
+            # naive eviction: clear half
+            for i, k in enumerate(list(self._embedding_cache.keys())):
+                if i % 2 == 0:
+                    del self._embedding_cache[k]
+        self._embedding_cache[key] = emb.tolist()
+        self._embedding_cache_dirty = True
+        return np.asarray(emb, dtype=np.float32)
+
+    def _embedding_cache_key(self, text: str) -> str:
+        return f"{self.embedding_model_name}:{hash(text)}"
+
+    async def _http_vector_search(
+        self, query_embedding: np.ndarray, max_results: int
+    ) -> list[RetrievalResult]:
+        try:
+            assert isinstance(self._vector_store, _HttpVectorStore)
+            results = await self._vector_store.query(query_embedding.tolist(), max_results)
+            out: list[RetrievalResult] = []
+            for it in results:
+                # If the document is not known locally, construct a minimal Chunk
+                chunk = self._chunks.get(it.get("id"))
+                if not chunk:
+                    chunk = Chunk(
+                        content=it.get("document", ""),
+                        chunk_type=ChunkType.TEXT,
+                        start_index=0,
+                        end_index=len(it.get("document", "")),
+                        metadata=it.get("metadata", {}),
+                    )
+                raw_score = float(it.get("score", 0.0))
+                score = raw_score
+                # If score is outside [0,1], assume cosine in [-1,1] and remap
+                if raw_score < 0.0 or raw_score > 1.0:
+                    score = (raw_score + 1.0) / 2.0
+                # Clamp
+                if score < 0.0:
+                    score = 0.0
+                elif score > 1.0:
+                    score = 1.0
+
+                out.append(
+                    RetrievalResult.from_chunk(
+                        chunk=chunk,
+                        score=score,
+                        search_mode=SearchMode.VECTOR_ONLY,
+                        metadata={"backend": "http", "raw_score": raw_score},
+                    )
+                )
+            return out
+        except Exception as e:
+            logger.error(f"HTTP vector search failed: {e}")
+            return []
+
+    def _generate_chunk_id(self, chunk: Chunk) -> str:
+        """Generate unique ID for a chunk (stable across runs for same content)."""
+        content_hash = hash(chunk.content)
+        return f"{chunk.chunk_type.value}_{chunk.start_index}_{content_hash}"
+
+    async def _add_to_keyword_index(self, chunk_id: str, chunk: Chunk) -> None:
+        """Add chunk to the in-memory keyword index."""
+        for keyword in self._extract_keywords(chunk.content.lower()):
+            if keyword not in self._keyword_index:
+                self._keyword_index[keyword] = []
+            self._keyword_index[keyword].append((chunk_id, chunk))
+
+    def _extract_keywords(self, text: str) -> list[str]:
+        """Basic keyword extraction with stop-word filtering."""
+        words = re.findall(r"\b\w+\b", text.lower())
+        stop_words = {
+            "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
+            "is","are","was","were","be","been","have","has","had","do","does","did","will",
+            "would","could","should","this","that","these","those","i","you","he","she","it","we","they",
+        }
+        return [w for w in set(words) if len(w) > 2 and w not in stop_words]
+
+    async def _keyword_search(self, query: str, max_results: int) -> list[RetrievalResult]:
+        """Keyword search using in-memory index."""
+        results: list[RetrievalResult] = []
+        terms = self._extract_keywords(query)
+        if not terms:
+            return results
+        scores: dict[str, float] = {}
+        total_docs = max(1, len(self._chunks))
+        for t in terms:
+            postings = self._keyword_index.get(t, [])
+            df = len(postings)
+            for cid, ch in postings:
+                tf = ch.content.lower().count(t)
+                idf = np.log(total_docs / (df + 1))
+                scores[cid] = scores.get(cid, 0.0) + tf * idf
+        if not scores:
+            return results
+        max_score = max(scores.values()) or 1.0
+        for cid, sc in scores.items():
+            ch = self._chunks[cid]
+            results.append(
+                RetrievalResult.from_chunk(
+                    chunk=ch,
+                    score=float(sc / max_score),
+                    search_mode=SearchMode.KEYWORD_ONLY,
+                    metadata={"keyword_matches": len([t for t in terms if t in ch.content.lower()])},
+                )
+            )
+        results.sort(key=lambda x: x.score, reverse=True)
+        return results[:max_results]
+
+    async def _hybrid_search(self, query: str, max_results: int) -> list[RetrievalResult]:
+        """Combine vector and keyword results with weighted fusion."""
+        vr = await self._vector_search(query, max_results * 2)
+        kr = await self._keyword_search(query, max_results * 2)
+        combined: dict[str, RetrievalResult] = {}
+        for r in vr:
+            cid = self._generate_chunk_id(r.chunk)
+            combined[cid] = r
+            combined[cid].search_mode = SearchMode.HYBRID
+        for r in kr:
+            cid = self._generate_chunk_id(r.chunk)
+            if cid in combined:
+                ex = combined[cid]
+                ex.score = (ex.score * 0.6) + (r.score * 0.4)
+                ex.metadata.update(r.metadata)
+            else:
+                r.search_mode = SearchMode.HYBRID
+                combined[cid] = r
+        fused = list(combined.values())
+        fused.sort(key=lambda x: x.score, reverse=True)
+        return fused[:max_results]
+
+    async def _rerank_with_context(
+        self, results: list[RetrievalResult], query_context: QueryContext
+    ) -> list[RetrievalResult]:
+        """Apply simple diversity penalty and user preference boosts."""
+        if not results:
+            return results
+        diverse = self._apply_diversity_penalty(results)
+        boosted = self._apply_preference_boosting(diverse, query_context.user_preferences)
+        return boosted
+
+    def _apply_diversity_penalty(self, results: list[RetrievalResult]) -> list[RetrievalResult]:
+        if len(results) <= 1:
+            return results
+        out = [results[0]]
+        for r in results[1:]:
+            max_sim = 0.0
+            for s in out:
+                sim = self._calculate_content_similarity(r.chunk.content, s.chunk.content)
+                max_sim = max(max_sim, sim)
+            # penalize up to 30% if very similar
+            r.score = r.score * (1 - 0.3 * max_sim)
+            out.append(r)
+        out.sort(key=lambda x: x.score, reverse=True)
+        return out
+
+    def _apply_preference_boosting(
+        self, results: list[RetrievalResult], user_preferences: dict[str, Any]
+    ) -> list[RetrievalResult]:
+        if not user_preferences:
+            return results
+        for r in results:
+            # Preferred file types
+            pref_types = user_preferences.get("file_types", [])
+            if pref_types:
+                ext = r.chunk.metadata.get("file_extension", "")
+                if ext in pref_types:
+                    r.score = min(1.0, r.score * 1.1)
+            # Preferred content types
+            pref_content = user_preferences.get("content_types", [])
+            if pref_content and r.chunk.chunk_type.value in pref_content:
+                r.score = min(1.0, r.score * 1.05)
+        return results
+
+    def _calculate_content_similarity(self, content1: str, content2: str) -> float:
+        w1 = set(self._extract_keywords(content1.lower()))
+        w2 = set(self._extract_keywords(content2.lower()))
+        if not w1 or not w2:
+            return 0.0
+        inter = len(w1 & w2)
+        union = len(w1 | w2)
+        return inter / union if union > 0 else 0.0
+
+
+class _HttpVectorStore:
+    """Minimal async client for a remote vector store API.
+
+    Expected endpoints:
+      POST /vectors/add { items: [{ id, embedding, document, metadata }] }
+      POST /vectors/query { embedding: [...], n_results: int }
+      -> returns { results: [{ id, score, document?, metadata? }, ...] }
+    """
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+        self._client = httpx.AsyncClient(timeout=30.0)
+
+    async def add_embeddings(self, items: list[dict[str, Any]]) -> None:
+        try:
+            url = f"{self.base_url}/vectors/add"
+            await self._client.post(url, json={"items": items})
+        except Exception:
+            # Best-effort
+            return
+
+    async def query(self, embedding: list[float], n_results: int) -> list[dict[str, Any]]:
+        url = f"{self.base_url}/vectors/query"
+        resp = await self._client.post(url, json={"embedding": embedding, "n_results": n_results})
+        resp.raise_for_status()
+        data = resp.json()
+        return data.get("results", [])

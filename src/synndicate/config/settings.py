@@ -11,8 +11,8 @@ Improvements over original:
 
 from functools import lru_cache
 from pathlib import Path
-
-from pydantic import BaseModel, Field, validator
+import os
+from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -25,8 +25,8 @@ class ModelEndpoint(BaseModel):
     timeout: float = Field(120.0, description="Request timeout in seconds")
     max_retries: int = Field(3, description="Maximum number of retries")
 
-    @validator("base_url")
-    def validate_base_url(self, v):
+    @field_validator("base_url")
+    def validate_base_url(cls, v: str) -> str:  # noqa: D401
         if v != "local" and not v.startswith(("http://", "https://")):
             raise ValueError("base_url must start with http:// or https://")
         return v.rstrip("/")
@@ -82,6 +82,15 @@ class RAGConfig(BaseModel):
     similarity_threshold: float = Field(0.7, ge=0.0, le=1.0)
     enable_hybrid_search: bool = Field(True)
     enable_reranking: bool = Field(True)
+    # New: distributed vector store and embedding cache
+    vector_api_url: str | None = Field(
+        default=None,
+        description="HTTP vector store base URL (e.g., http://localhost:8080). Overrides via SYN_RAG_VECTOR_API.",
+    )
+    embedding_cache_path: Path | None = Field(
+        default=None, description="Path to persist embedding cache JSON"
+    )
+    cache_max_entries: int = Field(100_000, gt=0)
 
 
 class ExecutionConfig(BaseModel):
@@ -159,9 +168,13 @@ class Settings(BaseSettings):
         # Ensure data directories exist
         self.data_directory.mkdir(parents=True, exist_ok=True)
         self.rag.persist_directory.mkdir(parents=True, exist_ok=True)
+        # Hydrate vector API URL from environment for convenience
+        env_vector = os.getenv("SYN_RAG_VECTOR_API")
+        if env_vector and not self.rag.vector_api_url:
+            self.rag.vector_api_url = env_vector
 
-    @validator("environment")
-    def validate_environment(self, v):
+    @field_validator("environment")
+    def validate_environment(cls, v: str) -> str:  # noqa: D401
         allowed = {"development", "staging", "production"}
         if v not in allowed:
             raise ValueError(f"environment must be one of {allowed}")
