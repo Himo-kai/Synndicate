@@ -350,7 +350,7 @@ synndicate/
 
 ## 📄 **License**
 
-Copyright 2025 Himo Kai. All Rights Reserved.
+Copyright 2025 Himokai. All Rights Reserved.
 
 This software is proprietary and confidential. See [LICENSE](https://github.com/himokai/Synndicate/blob/main/LICENSE) file for full terms.
 For licensing inquiries, contact: himokai@proton.me
