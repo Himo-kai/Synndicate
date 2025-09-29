@@ -382,4 +382,4 @@ For licensing inquiries, contact: himokai@proton.me
 ---
 
 **Synndicate AI** - Professional Multi-Agent Orchestration System  
-Copyright © 2025 Himo Kai. All Rights Reserved.
+Copyright © 2025 Himokai. All Rights Reserved.
