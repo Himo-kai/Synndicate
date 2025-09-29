@@ -112,6 +112,26 @@ class ExecutionConfig(BaseModel):
     enable_filesystem_access: bool = Field(False)
 
 
+class StorageConfig(BaseModel):
+    """Configuration for artifact storage backends."""
+
+    backend: str = Field("local", description="Storage backend: 'local' or 's3'")
+    local_path: Path = Field(Path("./artifacts"), description="Local storage directory")
+    
+    # S3 configuration
+    s3_bucket: str | None = Field(None, description="S3 bucket name")
+    s3_prefix: str = Field("", description="S3 key prefix")
+    s3_region: str = Field("us-east-1", description="AWS region")
+    s3_endpoint_url: str | None = Field(None, description="Custom S3 endpoint (for MinIO, etc.)")
+    
+    @field_validator("backend")
+    @classmethod
+    def validate_backend(cls, v: str) -> str:
+        if v not in ["local", "s3"]:
+            raise ValueError("Storage backend must be 'local' or 's3'")
+        return v
+
+
 class ObservabilityConfig(BaseModel):
     """Configuration for observability and monitoring."""
 
@@ -158,6 +178,7 @@ class Settings(BaseSettings):
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     execution: ExecutionConfig = Field(default_factory=ExecutionConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     api: APIConfig = Field(default_factory=APIConfig)
 

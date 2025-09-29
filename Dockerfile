@@ -42,14 +42,17 @@ ENV PYTHONUNBUFFERED=1 \
     SYN_API__PORT=8000 \
     SYN_SEED=1337
 
-# Install minimal runtime dependencies
+# Install minimal runtime dependencies and security updates
 RUN apt-get update && apt-get install -y \
     curl \
+    ca-certificates \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create non-root user for security
-RUN groupadd -r synndicate && useradd -r -g synndicate synndicate
+# Create non-root user for security with restricted permissions
+RUN groupadd -r synndicate --gid=1001 && \
+    useradd -r -g synndicate --uid=1001 --home-dir=/app --shell=/bin/false synndicate
 
 # Copy virtual environment from builder
 COPY --from=builder /opt/venv /opt/venv

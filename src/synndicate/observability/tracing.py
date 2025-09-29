@@ -226,5 +226,23 @@ def set_span_error(error: Exception):
 def trace_context(name: str, attributes: dict[str, Any] | None = None):
     """Context manager for creating a trace span."""
     manager = get_tracing_manager()
-    with manager.span(name, attributes) as span:
+    if not manager:
+        yield
+        return
+
+    with manager.span_context(name, attributes) as span:
         yield span
+
+
+def get_trace_id() -> str:
+    """Get the current trace ID."""
+    try:
+        current_span = trace.get_current_span()
+        if current_span and current_span.get_span_context().trace_id:
+            return format(current_span.get_span_context().trace_id, "032x")
+    except Exception:
+        pass
+    
+    # Generate a simple trace ID if no active span
+    import uuid
+    return str(uuid.uuid4()).replace("-", "")[:16]

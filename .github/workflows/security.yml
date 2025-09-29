@@ -1,0 +1,157 @@
+name: Security Scanning
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run security scans daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit semgrep
+        pip install -e .
+    
+    - name: Run Safety (Python dependency vulnerability scan)
+      run: |
+        safety check --json --output safety-report.json || true
+        safety check --short-report
+    
+    - name: Run Bandit (Python security linter)
+      run: |
+        bandit -r src/ -f json -o bandit-report.json || true
+        bandit -r src/ -f txt
+    
+    - name: Run Semgrep (Static analysis security scanner)
+      run: |
+        semgrep --config=auto src/ --json --output=semgrep-report.json || true
+        semgrep --config=auto src/ --text
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          safety-report.json
+          bandit-report.json
+          semgrep-report.json
+    
+    - name: Comment PR with security summary
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          let comment = '## 🔒 Security Scan Results\n\n';
+          
+          // Safety results
+          try {
+            const safetyData = JSON.parse(fs.readFileSync('safety-report.json', 'utf8'));
+            const vulnerabilities = safetyData.vulnerabilities || [];
+            comment += `### 📦 Dependency Vulnerabilities (Safety)\n`;
+            comment += `- **Found**: ${vulnerabilities.length} vulnerabilities\n`;
+            if (vulnerabilities.length > 0) {
+              comment += `- **Severity**: ${vulnerabilities.map(v => v.severity).join(', ')}\n`;
+            }
+          } catch (e) {
+            comment += `### 📦 Dependency Vulnerabilities (Safety)\n- ✅ No vulnerabilities found\n`;
+          }
+          
+          // Bandit results
+          try {
+            const banditData = JSON.parse(fs.readFileSync('bandit-report.json', 'utf8'));
+            const issues = banditData.results || [];
+            comment += `\n### 🔍 Code Security Issues (Bandit)\n`;
+            comment += `- **Found**: ${issues.length} potential issues\n`;
+            if (issues.length > 0) {
+              const severities = issues.map(i => i.issue_severity);
+              comment += `- **Severities**: ${[...new Set(severities)].join(', ')}\n`;
+            }
+          } catch (e) {
+            comment += `\n### 🔍 Code Security Issues (Bandit)\n- ✅ No issues found\n`;
+          }
+          
+          comment += `\n### 📋 Recommendations\n`;
+          comment += `- Review any HIGH or MEDIUM severity findings\n`;
+          comment += `- Update dependencies with known vulnerabilities\n`;
+          comment += `- Address code security issues before merging\n`;
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: comment
+          });
+
+  container-security:
+    name: Container Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Build Docker image
+      run: |
+        docker build -t synndicate-security-test .
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'synndicate-security-test'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Run Trivy for human-readable output
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'synndicate-security-test'
+        format: 'table'
+
+  secrets-scan:
+    name: Secrets Detection
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Run TruffleHog OSS
+      uses: trufflesecurity/trufflehog@main
+      with:
+        path: ./
+        base: main
+        head: HEAD
+        extra_args: --debug --only-verified

@@ -352,7 +352,7 @@ synndicate/
 
 Copyright 2025 Himokai. All Rights Reserved.
 
-This software is proprietary and confidential. See [LICENSE]() file for full terms.
+This software is proprietary and confidential. See [LICENSE](LICENSE) file for full terms.
 For licensing inquiries, contact: himokai@proton.me
 
 ## 📚 **Documentation**

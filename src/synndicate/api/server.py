@@ -65,31 +65,49 @@ Configuration:
 
 import time
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from ..config.container import Container
+from ..config.container import get_container
 from ..config.settings import get_settings
 from ..core.determinism import ensure_deterministic_startup, get_config_hash
-from ..core.orchestrator import Orchestrator
 from ..observability.logging import get_logger, set_trace_id
+from ..observability.tracing import get_trace_id
+from .auth import get_auth_manager, RateLimitTier, require_auth, UserRole, add_rate_limit_headers
 from ..observability.probe import probe
 
 logger = get_logger(__name__)
 
 # Global instances
-container: Container | None = None
-orchestrator: Orchestrator | None = None
+orchestrator = None
+container = None
+
+
+# Authentication dependency
+async def get_current_user(request: Request):
+    """Get current authenticated user from request."""
+    auth_manager = get_auth_manager()
+    if not auth_manager:
+        raise HTTPException(status_code=503, detail="Authentication not initialized")
+    
+    try:
+        api_key, tier = await auth_manager.authenticate_request(request)
+        return {"api_key": api_key, "tier": tier}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
+        raise HTTPException(status_code=401, detail="Authentication failed")
 
 
 class QueryRequest(BaseModel):
     """Request model for query endpoint."""
 
-    query: str = Field(..., description="The query to process")
+    query: str = Field(..., min_length=1, description="The query to process")
     context: dict[str, Any] | None = Field(None, description="Optional context")
     workflow: str = Field("auto", description="Workflow type (auto, development, production)")
 
@@ -180,9 +198,13 @@ app = create_app()
 
 
 @app.get("/health", response_model=HealthResponse)
-async def health_check():
+async def health_check(request: Request):
     """Health check endpoint."""
-    uptime = time.time() - getattr(app.state, "startup_time", time.time())
+    # Add trace ID to response headers
+    trace_id = get_trace_id()
+    
+    startup_time = getattr(app.state, "startup_time", time.time())
+    uptime = max(0.0, time.time() - startup_time)
 
     # Check component health
     components = {
@@ -207,7 +229,7 @@ async def health_check():
     except Exception as e:
         components["models"] = f"error: {str(e)}"
 
-    return HealthResponse(
+    response = HealthResponse(
         status=(
             "healthy"
             if all(
@@ -220,12 +242,55 @@ async def health_check():
         uptime_seconds=uptime,
         components=components,
     )
+    
+    # Add observability headers
+    from fastapi import Response
+    resp = Response(content=response.model_dump_json(), media_type="application/json")
+    resp.headers["x-request-id"] = trace_id
+    resp.headers["trace-id"] = trace_id
+    return resp
 
 
 @app.post("/query", response_model=QueryResponse)
-async def process_query(request: QueryRequest):
+async def process_query(request: QueryRequest, http_request: Request):
     """Process a query through the orchestrator."""
-    if not orchestrator:
+    # Handle authentication first - this must succeed before proceeding
+    auth_manager = get_auth_manager()
+    if auth_manager and getattr(auth_manager.config, 'require_api_key', True):
+        try:
+            api_key, tier = await auth_manager.authenticate_request(http_request)
+            # Check if authentication actually succeeded
+            if not api_key or tier == RateLimitTier.ANONYMOUS:
+                raise HTTPException(status_code=401, detail="API key required")
+            
+            # Check rate limiting after successful authentication
+            is_limited, limit_info = auth_manager.rate_limiter.is_rate_limited(http_request)
+            if is_limited:
+                error_detail = limit_info.get("error", "Rate limit exceeded")
+                retry_after = limit_info.get("retry_after", 60)
+                raise HTTPException(
+                    status_code=429, 
+                    detail=error_detail,
+                    headers={"Retry-After": str(retry_after)}
+                )
+        except HTTPException as e:
+            # Re-raise authentication errors immediately
+            raise e
+        except Exception as e:
+            # Handle any other authentication errors
+            raise HTTPException(status_code=401, detail="Authentication failed")
+    
+    # Get orchestrator (try container first, then global)
+    current_orchestrator = orchestrator
+    if not current_orchestrator:
+        try:
+            container_instance = get_container()
+            if container_instance and hasattr(container_instance, 'get_orchestrator'):
+                current_orchestrator = container_instance.get_orchestrator()
+        except Exception:
+            pass
+    
+    if not current_orchestrator:
         raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
     # Generate trace ID for this request
@@ -239,7 +304,7 @@ async def process_query(request: QueryRequest):
 
         try:
             # Process query through orchestrator
-            result = await orchestrator.process_query(
+            result = await current_orchestrator.process_query(
                 query=request.query, context=request.context, workflow=request.workflow
             )
 
@@ -286,12 +351,25 @@ async def process_query(request: QueryRequest):
 
 
 @app.get("/metrics")
-async def get_metrics():
+async def get_metrics(request: Request):
     """Get system metrics (placeholder for Prometheus integration)."""
+    # Handle authentication for admin-only endpoint
+    auth_manager = get_auth_manager()
+    if auth_manager and auth_manager.config.require_api_key:
+        try:
+            api_key, tier = await auth_manager.authenticate_request(request)
+            # Check if user has admin role for metrics access
+            if tier != "admin":
+                raise HTTPException(status_code=401, detail="Admin access required")
+        except HTTPException as e:
+            if e.status_code == 401:
+                raise HTTPException(status_code=401, detail="Authentication required")
+            raise
+    
     return {
         "message": "Metrics endpoint - integrate with Prometheus for production",
-        "uptime_seconds": time.time() - getattr(app.state, "startup_time", time.time()),
-        "config_hash": getattr(app.state, "config_hash", get_config_hash()),
+        "status": "placeholder",
+        "timestamp": time.time(),
     }
 
 
