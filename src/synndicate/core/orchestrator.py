@@ -48,6 +48,35 @@ class OrchestratorResult:
             return self.final_response.response
         return ""
 
+    # Backward-compatibility aliases for legacy callers/tests
+    @property
+    def response(self) -> AgentResponse | None:
+        """Alias to final_response for backward compatibility."""
+        return self.final_response
+
+    @property
+    def workflow_type(self) -> str | None:
+        """Expose a normalized workflow type for backward compatibility.
+
+        If `metadata["workflow_type"]` is missing, infer from other
+        metadata keys emitted by base orchestrator (e.g., `workflow`,
+        `pipeline_name`). Returns canonical values like 'plan_and_code'
+        or 'planning_only' when possible.
+        """
+        wf = self.metadata.get("workflow_type")
+        if wf:
+            return wf
+        workflow = self.metadata.get("workflow")
+        pipeline_name = self.metadata.get("pipeline_name")
+        if workflow == "pipeline":
+            if pipeline_name == "development":
+                return "plan_and_code"
+            if pipeline_name == "analysis":
+                return "planning_only"
+        if workflow == "state_machine":
+            return "plan_and_code"
+        return wf
+
 
 class PlanningState(State):
     """State for task planning."""
@@ -326,7 +355,8 @@ class Orchestrator:
             if workflow == "state_machine":
                 result = await self._execute_state_machine(query, ctx)
             else:
-                result = await self._execute_pipeline(query, ctx, workflow)
+                pipeline_name = "development" if workflow == "pipeline" else workflow
+                result = await self._execute_pipeline(query, ctx, pipeline_name)
 
             execution_time = time.time() - start_time
 

@@ -316,3 +316,27 @@ def track_agent_performance(agent_type: str):
         return wrapper
 
     return decorator
+
+
+class NoOpCounter:
+    def inc(self, *args, **kwargs):
+        return None
+
+
+class NoOpTimer:
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def observe(self, *args, **kwargs):
+        return None
+
+
+def counter(name: str):
+    return NoOpCounter()
+
+
+def timer(name: str):
+    return NoOpTimer()

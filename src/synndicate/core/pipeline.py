@@ -159,6 +159,18 @@ class AgentStage(PipelineStage):
                 stage_name=self.name, status=StageStatus.FAILED, error=str(e), duration=duration
             )
 
+    async def rollback(self, context: dict[str, Any], stage_result: StageResult) -> None:
+        """Default no-op rollback for agent stages.
+
+        Most agent executions are idempotent within a pipeline context; if a
+        concrete stage needs compensating actions, override this method in a
+        subclass and implement the necessary cleanup.
+        """
+        # Intentionally no-op; add logging for observability
+        logger.debug(
+            "Rollback called for stage '%s' with status=%s", self.name, stage_result.status
+        )
+
 
 class ConditionalStage(PipelineStage):
     """Pipeline stage that executes based on conditions."""
@@ -189,6 +201,19 @@ class ConditionalStage(PipelineStage):
                 status=StageStatus.SKIPPED,
                 metadata={"reason": "Condition not met"},
             )
+
+    async def rollback(self, context: dict[str, Any], stage_result: StageResult) -> None:
+        """Default no-op rollback for conditional stages.
+
+        Conditional stages typically wrap other stages and do not perform
+        side-effects themselves. If compensating actions are required for a
+        specific conditional stage, override this method in a subclass.
+        """
+        logger.debug(
+            "Rollback called for conditional stage '%s' with status=%s",
+            self.name,
+            stage_result.status,
+        )
 
 
 class Pipeline:
