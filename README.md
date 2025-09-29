@@ -1,8 +1,8 @@
 # Synndicate AI
 
-🚀 **Enterprise-Grade Multi-Agent AI Orchestration System**
+🚀 **A Multi-Agent AI Orchestration System**
 
-A production-ready AI orchestration platform with comprehensive observability, deterministic behavior, and audit-ready architecture. Features local language model integration (TinyLlama), advanced RAG capabilities, and full trace-based monitoring.
+An AI orchestration platform with comprehensive observability, deterministic behavior, and audit-ready architecture. Features local language model integration (TinyLlama), advanced RAG capabilities, and full trace-based monitoring.
 
 ## 🎯 **Key Features**
 
