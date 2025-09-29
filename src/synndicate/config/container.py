@@ -113,7 +113,9 @@ def setup_container(settings: Settings | None = None) -> Container:
             vector_store_path=str(rag.persist_directory) if rag.persist_directory else None,
             max_results=rag.max_results,
             min_relevance_score=rag.similarity_threshold,
-            embedding_cache_path=str(rag.embedding_cache_path) if rag.embedding_cache_path else None,
+            embedding_cache_path=(
+                str(rag.embedding_cache_path) if rag.embedding_cache_path else None
+            ),
             cache_max_entries=rag.cache_max_entries,
         )
 

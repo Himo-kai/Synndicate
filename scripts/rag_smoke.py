@@ -2,16 +2,20 @@
 from __future__ import annotations
 
 import asyncio
+import os
 from pathlib import Path
 
-from synndicate.rag.retriever import RAGRetriever, QueryContext
 from synndicate.rag.chunking import Chunk, ChunkType
+from synndicate.rag.retriever import QueryContext, RAGRetriever
 
 
 async def main() -> None:
-    retriever = RAGRetriever(
-        embedding_cache_path=str(Path.home() / ".synndicate/emb_cache.json")
-    )
+    # Configure endpoint
+    base_url = os.getenv("SYN_RAG_VECTOR_API", "http://localhost:8080")
+    api_key = os.getenv("SYN_RAG_VECTOR_API_KEY")
+    os.environ["SYN_RAG_VECTOR_API"] = base_url
+
+    retriever = RAGRetriever(embedding_cache_path=str(Path.home() / ".synndicate/emb_cache.json"))
     await retriever.initialize()
 
     # Index a couple of chunks
@@ -39,7 +43,9 @@ async def main() -> None:
     for r in results[:2]:
         print(f"- id? {r.chunk.metadata.get('id')} score={r.score:.3f} mode={r.search_mode.value}")
 
-    print("Stats:", retriever.get_stats())
+    stats = retriever.get_stats()
+    stats["vector_store_auth"] = bool(api_key)
+    print("Stats:", stats)
 
 
 if __name__ == "__main__":

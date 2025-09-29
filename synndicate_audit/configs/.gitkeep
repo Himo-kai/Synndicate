@@ -1,0 +1,3 @@
+# Audit configuration directory
+# This directory stores audit-specific configuration files, compliance settings, and audit policies
+# Used for audit trail generation and compliance validation

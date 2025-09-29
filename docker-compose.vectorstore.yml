@@ -1,12 +1,74 @@
-version: "3.9"
+# Synndicate Vector Store - Docker Compose
+#
+# Provides a containerized vector store service for distributed RAG.
+# Includes authentication, persistence, and health monitoring.
+#
+# Platform Support:
+#   - Arch Linux (primary development platform)
+#   - Ubuntu/Debian (production and CI/CD)
+#   - macOS (development with Docker Desktop)
+#   - Windows (WSL2 + Docker Desktop recommended)
+#
+# Usage:
+#   # Start services
+#   docker-compose -f docker-compose.vectorstore.yml up -d
+#   
+#   # Configure client
+#   export SYN_RAG_VECTOR_API="http://localhost:8080"
+#   export SYN_RAG_VECTOR_API_KEY="your-secret-key"
+#   
+#   # Test connection
+#   curl http://localhost:8080/health
+#
+# Development Notes:
+#   - Arch users: Install docker and docker-compose via pacman
+#   - Ubuntu users: Use apt or snap for Docker installation
+#   - Persistence data stored in ./data/vectorstore.json
+#   - API key should be generated securely for production
+
+version: '3.8'
+
 services:
   vectorstore:
     build:
       context: .
       dockerfile: Dockerfile.vectorstore
-    container_name: synndicate-vectorstore
-    environment:
-      - UVICORN_WORKERS=1
     ports:
       - "8080:8080"
+    environment:
+      # Authentication (set your own secret key)
+      - SYN_VECTORSTORE_API_KEY=${SYN_VECTORSTORE_API_KEY:-demo-key-change-in-production}
+      # Persistence path inside container
+      - SYN_VECTORSTORE_PERSIST_PATH=/data/vectorstore.json
+    volumes:
+      # Mount local data directory for persistence
+      - ./data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    
+  # Optional: Add monitoring/logging service
+  # Uncomment for production deployments
+  # 
+  # prometheus:
+  #   image: prom/prometheus:latest
+  #   ports:
+  #     - "9090:9090"
+  #   volumes:
+  #     - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+  #   depends_on:
+  #     - vectorstore
+
+volumes:
+  # Named volume for persistence (alternative to bind mount)
+  vectorstore_data:
+    driver: local
+
+# Networks for multi-service deployments
+networks:
+  synndicate:
+    driver: bridge

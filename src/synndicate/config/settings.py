@@ -9,9 +9,10 @@ Improvements over original:
 - Secrets management integration
 """
 
+import os
 from functools import lru_cache
 from pathlib import Path
-import os
+
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -86,6 +87,10 @@ class RAGConfig(BaseModel):
     vector_api_url: str | None = Field(
         default=None,
         description="HTTP vector store base URL (e.g., http://localhost:8080). Overrides via SYN_RAG_VECTOR_API.",
+    )
+    vector_api_key: str | None = Field(
+        default=None,
+        description="API key for HTTP vector store auth (sent as X-API-Key). Overrides via SYN_RAG_VECTOR_API_KEY.",
     )
     embedding_cache_path: Path | None = Field(
         default=None, description="Path to persist embedding cache JSON"
@@ -172,6 +177,9 @@ class Settings(BaseSettings):
         env_vector = os.getenv("SYN_RAG_VECTOR_API")
         if env_vector and not self.rag.vector_api_url:
             self.rag.vector_api_url = env_vector
+        env_vector_key = os.getenv("SYN_RAG_VECTOR_API_KEY")
+        if env_vector_key and not self.rag.vector_api_key:
+            self.rag.vector_api_key = env_vector_key
 
     @field_validator("environment")
     def validate_environment(cls, v: str) -> str:  # noqa: D401

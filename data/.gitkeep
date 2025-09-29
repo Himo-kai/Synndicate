@@ -1,0 +1,3 @@
+# Data directory
+# This directory stores persistent data files, caches, and runtime data
+# Including vector store persistence, embedding caches, and model data

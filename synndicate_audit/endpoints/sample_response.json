@@ -1,0 +1,1 @@
+{"success":false,"trace_id":"1998915fe91c33d","response":null,"agents_used":["plan"],"execution_path":["planning"],"confidence":0.0,"execution_time":2.193186044692993,"metadata":{"workflow":"state_machine","state_history":["planning"],"final_state":"planning"}}

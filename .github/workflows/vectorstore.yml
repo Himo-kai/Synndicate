@@ -1,0 +1,173 @@
+name: Vector Store CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'scripts/vectorstore_server.py'
+      - 'Dockerfile.vectorstore'
+      - 'docker-compose.vectorstore.yml'
+      - '.github/workflows/vectorstore.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'scripts/vectorstore_server.py'
+      - 'Dockerfile.vectorstore'
+      - 'docker-compose.vectorstore.yml'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/vectorstore
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install fastapi uvicorn numpy httpx
+
+    - name: Generate test API key
+      id: api-key
+      run: echo "key=$(openssl rand -hex 32)" >> $GITHUB_OUTPUT
+
+    - name: Start vector store server
+      run: |
+        export SYN_VECTORSTORE_API_KEY="${{ steps.api-key.outputs.key }}"
+        export SYN_VECTORSTORE_PERSIST_PATH="/tmp/vectorstore.json"
+        uvicorn --app-dir scripts vectorstore_server:app --host 0.0.0.0 --port 8080 &
+        sleep 3
+      
+    - name: Health check
+      run: |
+        curl -f http://localhost:8080/health
+        echo "✓ Health check passed"
+
+    - name: Test unauthorized access
+      run: |
+        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST http://localhost:8080/vectors/query \
+          -H "Content-Type: application/json" \
+          -d '{"embedding":[0,0,0],"n_results":1}')
+        if [ "$response" != "401" ]; then
+          echo "✗ Expected 401 Unauthorized, got $response"
+          exit 1
+        fi
+        echo "✓ Unauthorized access properly blocked"
+
+    - name: Test authorized operations
+      run: |
+        # Test add
+        curl -f -X POST http://localhost:8080/vectors/add \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${{ steps.api-key.outputs.key }}" \
+          -d '{"items":[{"id":"test1","embedding":[0.1,0.2,0.3],"document":"test doc","metadata":{}}]}'
+        
+        # Test query
+        curl -f -X POST http://localhost:8080/vectors/query \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${{ steps.api-key.outputs.key }}" \
+          -d '{"embedding":[0.1,0.2,0.3],"n_results":1}'
+        
+        # Test delete
+        curl -f -X POST http://localhost:8080/vectors/delete \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${{ steps.api-key.outputs.key }}" \
+          -d '{"ids":["test1"]}'
+        
+        echo "✓ All authorized operations successful"
+
+    - name: Test persistence
+      run: |
+        # Add data
+        curl -f -X POST http://localhost:8080/vectors/add \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: ${{ steps.api-key.outputs.key }}" \
+          -d '{"items":[{"id":"persist1","embedding":[0.4,0.5,0.6],"document":"persist doc","metadata":{}}]}'
+        
+        # Check file exists
+        if [ ! -f "/tmp/vectorstore.json" ]; then
+          echo "✗ Persistence file not created"
+          exit 1
+        fi
+        
+        echo "✓ Persistence working"
+
+  build-docker:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Log in to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./Dockerfile.vectorstore
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+
+    - name: Test Docker image
+      run: |
+        # Generate test key
+        TEST_KEY=$(openssl rand -hex 32)
+        
+        # Run container
+        docker run -d --name vectorstore-test \
+          -p 8081:8080 \
+          -e SYN_VECTORSTORE_API_KEY="$TEST_KEY" \
+          -e SYN_VECTORSTORE_PERSIST_PATH="/data/vectorstore.json" \
+          ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+        
+        # Wait for startup
+        sleep 5
+        
+        # Health check
+        curl -f http://localhost:8081/health
+        
+        # Test auth
+        curl -f -X POST http://localhost:8081/vectors/query \
+          -H "Content-Type: application/json" \
+          -H "X-API-Key: $TEST_KEY" \
+          -d '{"embedding":[0,0,0],"n_results":1}'
+        
+        echo "✓ Docker image test passed"
+        
+        # Cleanup
+        docker stop vectorstore-test
+        docker rm vectorstore-test

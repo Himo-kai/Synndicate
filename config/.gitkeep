@@ -1,0 +1,3 @@
+# Configuration directory
+# This directory contains deployment configurations, environment settings, and infrastructure configs
+# Organized to separate configuration from source code

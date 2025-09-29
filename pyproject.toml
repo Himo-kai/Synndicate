@@ -5,11 +5,13 @@ build-backend = "hatchling.build"
 [project]
 name = "synndicate"
 version = "2.0.0"
-description = "Advanced Multi-Agent AI Orchestration System"
+description = "Multi-Agent AI Orchestration System - Professional Portfolio Project"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {text = "All Rights Reserved"}
+copyright = "2024 Himo Kai"
 authors = [
+    {name = "Himo Kai", email = "himokai@proton.me"},
     {name = "himokai", email = "himokai@example.com"},
 ]
 keywords = ["ai", "agents", "orchestration", "rag", "llm"]
@@ -107,3 +109,7 @@ python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
 addopts = "--cov=src/synndicate --cov-report=term-missing --cov-report=html"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore:builtin type.*has no __module__ attribute:DeprecationWarning",
+]

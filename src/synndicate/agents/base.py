@@ -293,7 +293,10 @@ class Agent(ABC):
         agent_name = self.__class__.__name__.lower().replace("agent", "")
 
         # Ensure class-level patched model_manager is honored even if set after __init__
-        if self.model_manager is None and getattr(self.__class__, "model_manager", None) is not None:
+        if (
+            self.model_manager is None
+            and getattr(self.__class__, "model_manager", None) is not None
+        ):
             self.model_manager = self.__class__.model_manager
 
         with probe(f"agent.{agent_name}.process", trace_id):

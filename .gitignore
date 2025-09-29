@@ -142,11 +142,35 @@ cython_debug/
 .vscode/
 
 # Synndicate specific
+.synndicate/
+models/
+data/chroma/
+data/*.json
+data/*.db
+synndicate_audit/logs/
+synndicate_audit/artifacts/
+
+# Build and development artifacts
+build/
 artifacts/
-logs/
-synndicate_audit/
+htmlcov/
+.coverage
+.coverage.*
+
+# Temporary files
+temp_*
 *.tmp
 *.temp
+
+# Cache directories (now organized under build/)
+build/cache/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
 
 # Model files (large)
 models/

@@ -1,26 +1,83 @@
-# syntax=docker/dockerfile:1
-FROM python:3.13-slim
+# Synndicate Vector Store - Docker Image
+#
+# Multi-stage build for a lightweight, secure vector store service.
+# Supports authentication, persistence, and health monitoring.
+#
+# Platform Support:
+#   - linux/amd64 (Intel/AMD x86_64)
+#   - linux/arm64 (Apple Silicon, ARM servers)
+#   - Tested on Arch Linux, Ubuntu, macOS, Windows (WSL2)
+#
+# Build:
+#   docker build -f Dockerfile.vectorstore -t synndicate-vectorstore .
+#
+# Run:
+#   docker run -d \
+#     -p 8080:8080 \
+#     -e SYN_VECTORSTORE_API_KEY="your-secret" \
+#     -e SYN_VECTORSTORE_PERSIST_PATH="/data/vectorstore.json" \
+#     -v $(pwd)/data:/data \
+#     synndicate-vectorstore
+#
+# Development Notes:
+#   - Arch Linux: sudo pacman -S docker docker-compose
+#   - Ubuntu: sudo apt install docker.io docker-compose
+#   - macOS: Install Docker Desktop
+#   - Windows: Docker Desktop with WSL2 backend
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+FROM python:3.11-slim as builder
 
-WORKDIR /app
-
-# Install system deps (if any)
-RUN apt-get update -y && apt-get install -y --no-install-recommends \
-    build-essential \
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy minimal project files
-COPY pyproject.toml requirements.txt ./
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Install runtime dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies
+COPY requirements-vectorstore.txt* ./
+RUN pip install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn[standard]==0.24.0 \
+    numpy==1.24.3 \
+    pydantic==2.5.0
 
-# Copy source
-COPY ./src ./src
-COPY ./scripts ./scripts
+# Production stage
+FROM python:3.11-slim
 
+# Create non-root user for security
+RUN groupadd -r vectorstore && useradd -r -g vectorstore vectorstore
+
+# Copy virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Create data directory with proper permissions
+RUN mkdir -p /data && chown vectorstore:vectorstore /data
+
+# Copy application code
+COPY scripts/vectorstore_server.py /app/vectorstore_server.py
+WORKDIR /app
+
+# Switch to non-root user
+USER vectorstore
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"
+
+# Expose port
 EXPOSE 8080
 
-CMD ["uvicorn", "scripts.vectorstore_server:app", "--host", "0.0.0.0", "--port", "8080"]
+# Environment variables with defaults
+ENV SYN_VECTORSTORE_API_KEY=""
+ENV SYN_VECTORSTORE_PERSIST_PATH="/data/vectorstore.json"
+ENV UVICORN_HOST="0.0.0.0"
+ENV UVICORN_PORT="8080"
+ENV UVICORN_LOG_LEVEL="info"
+
+# Start server
+CMD ["python", "-m", "uvicorn", "vectorstore_server:app", "--host", "0.0.0.0", "--port", "8080"]

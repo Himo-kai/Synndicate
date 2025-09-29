@@ -1,5 +1,5 @@
 """
-Synndicate AI - Enterprise-Grade Multi-Agent AI Orchestration System
+Synndicate AI - A Simple Multi-Agent AI Orchestration System
 
 A production-ready AI orchestration platform with comprehensive observability,
 deterministic behavior, and audit-ready architecture. Features local language

@@ -12,10 +12,10 @@ Improvements over original:
 import asyncio
 import json
 import os
-from pathlib import Path
 import re
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -43,6 +43,7 @@ except ImportError:
     SENTENCE_TRANSFORMERS_AVAILABLE = False
 
 import httpx
+
 from ..observability.logging import get_logger
 from .chunking import Chunk, ChunkType
 
@@ -206,8 +207,9 @@ class RAGRetriever:
 
         # Initialize vector store
         vector_api = os.getenv("SYN_RAG_VECTOR_API")
+        api_key = os.getenv("SYN_RAG_VECTOR_API_KEY")
         if vector_api:
-            self._vector_store = _HttpVectorStore(vector_api)
+            self._vector_store = _HttpVectorStore(vector_api, api_key)
             logger.info(f"Using remote vector store API at: {vector_api}")
             self._vector_store_kind = "http"
         elif CHROMADB_AVAILABLE and self.vector_store_path:
@@ -520,9 +522,47 @@ class RAGRetriever:
         """Basic keyword extraction with stop-word filtering."""
         words = re.findall(r"\b\w+\b", text.lower())
         stop_words = {
-            "the","a","an","and","or","but","in","on","at","to","for","of","with","by",
-            "is","are","was","were","be","been","have","has","had","do","does","did","will",
-            "would","could","should","this","that","these","those","i","you","he","she","it","we","they",
+            "the",
+            "a",
+            "an",
+            "and",
+            "or",
+            "but",
+            "in",
+            "on",
+            "at",
+            "to",
+            "for",
+            "of",
+            "with",
+            "by",
+            "is",
+            "are",
+            "was",
+            "were",
+            "be",
+            "been",
+            "have",
+            "has",
+            "had",
+            "do",
+            "does",
+            "did",
+            "will",
+            "would",
+            "could",
+            "should",
+            "this",
+            "that",
+            "these",
+            "those",
+            "i",
+            "you",
+            "he",
+            "she",
+            "it",
+            "we",
+            "they",
         }
         return [w for w in set(words) if len(w) > 2 and w not in stop_words]
 
@@ -551,7 +591,9 @@ class RAGRetriever:
                     chunk=ch,
                     score=float(sc / max_score),
                     search_mode=SearchMode.KEYWORD_ONLY,
-                    metadata={"keyword_matches": len([t for t in terms if t in ch.content.lower()])},
+                    metadata={
+                        "keyword_matches": len([t for t in terms if t in ch.content.lower()])
+                    },
                 )
             )
         results.sort(key=lambda x: x.score, reverse=True)
@@ -641,9 +683,10 @@ class _HttpVectorStore:
       -> returns { results: [{ id, score, document?, metadata? }, ...] }
     """
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str, api_key: str | None = None):
         self.base_url = base_url.rstrip("/")
-        self._client = httpx.AsyncClient(timeout=30.0)
+        headers = {"X-API-Key": api_key} if api_key else None
+        self._client = httpx.AsyncClient(timeout=30.0, headers=headers)
 
     async def add_embeddings(self, items: list[dict[str, Any]]) -> None:
         try:
