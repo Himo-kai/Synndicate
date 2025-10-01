@@ -1,4 +1,4 @@
-# Synndicate AI
+# Synndicate
 
 🚀 **A Multi-Agent AI Orchestration System**
 
