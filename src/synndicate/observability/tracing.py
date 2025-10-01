@@ -15,9 +15,15 @@ from contextlib import contextmanager
 from typing import Any
 
 from opentelemetry import trace
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from opentelemetry.instrumentation.requests import RequestsInstrumentor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import Span, Status, StatusCode, Tracer
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 
+from .distributed_tracing import DistributedTracingManager
 from .logging import get_logger
 
 logger = get_logger(__name__)
@@ -26,9 +32,62 @@ logger = get_logger(__name__)
 class TracingManager:
     """Manages OpenTelemetry tracing configuration and utilities."""
 
-    def __init__(self, tracer: Tracer):
-        self.tracer = tracer
+    def __init__(
+        self, 
+        service_name: str = "synndicate", 
+        service_version: str = "2.0.0",
+        distributed_manager: DistributedTracingManager | None = None
+    ):
+        """Initialize tracing manager."""
+        self.service_name = service_name
+        self.service_version = service_version
+        self.tracer_provider: TracerProvider | None = None
+        self.tracer: trace.Tracer | None = None
+        self._initialized = False
+        self.distributed_manager = distributed_manager
         self.propagator = TraceContextTextMapPropagator()
+
+    def initialize(self, otlp_endpoint: str | None = None) -> None:
+        """Initialize OpenTelemetry tracing with distributed backend support."""
+        if self._initialized:
+            return
+
+        # Create resource
+        resource = Resource.create(
+            {
+                "service.name": self.service_name,
+                "service.version": self.service_version,
+            }
+        )
+
+        # Create tracer provider
+        self.tracer_provider = TracerProvider(resource=resource)
+        trace.set_tracer_provider(self.tracer_provider)
+
+        # Initialize distributed tracing backend if available
+        if self.distributed_manager:
+            try:
+                self.distributed_manager.setup()
+                # The distributed manager will configure the appropriate exporters
+            except Exception as e:
+                # Fall back to OTLP if distributed setup fails
+                if otlp_endpoint:
+                    otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
+                    span_processor = BatchSpanProcessor(otlp_exporter)
+                    self.tracer_provider.add_span_processor(span_processor)
+        elif otlp_endpoint:
+            # Legacy OTLP support
+            otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
+            span_processor = BatchSpanProcessor(otlp_exporter)
+            self.tracer_provider.add_span_processor(span_processor)
+
+        # Get tracer
+        self.tracer = trace.get_tracer(self.service_name, self.service_version)
+
+        # Instrument requests
+        RequestsInstrumentor().instrument()
+
+        self._initialized = True
 
     def start_span(
         self,
@@ -79,6 +138,18 @@ class TracingManager:
         finally:
             span.end()
 
+    def shutdown(self) -> None:
+        """Shutdown tracing and distributed backend."""
+        if self.distributed_manager:
+            try:
+                self.distributed_manager.shutdown()
+            except Exception:
+                pass  # Best effort cleanup
+        
+        if self.tracer_provider:
+            self.tracer_provider.shutdown()
+        self._initialized = False
+
 
 # Global tracing manager
 _tracing_manager: TracingManager | None = None
@@ -87,7 +158,7 @@ _tracing_manager: TracingManager | None = None
 def setup_tracing(tracer: Tracer) -> TracingManager:
     """Setup global tracing manager."""
     global _tracing_manager
-    _tracing_manager = TracingManager(tracer)
+    _tracing_manager = TracingManager()
     return _tracing_manager
 
 
@@ -105,7 +176,7 @@ def get_tracing_manager() -> TracingManager:
     if _tracing_manager is None:
         from opentelemetry.trace import NoOpTracer
 
-        return TracingManager(NoOpTracer())
+        return TracingManager()
     return _tracing_manager
 
 

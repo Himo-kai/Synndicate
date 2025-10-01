@@ -72,13 +72,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from ..config.container import get_container
+from ..config.container import get_container, Container
 from ..config.settings import get_settings
 from ..core.determinism import ensure_deterministic_startup, get_config_hash
+from ..core.orchestrator import Orchestrator
 from ..observability.logging import get_logger, set_trace_id
 from ..observability.tracing import get_trace_id
 from .auth import get_auth_manager, RateLimitTier, require_auth, UserRole, add_rate_limit_headers
 from ..observability.probe import probe
+from ..observability.metrics import get_metrics_registry
 
 logger = get_logger(__name__)
 
@@ -107,7 +109,7 @@ async def get_current_user(request: Request):
 class QueryRequest(BaseModel):
     """Request model for query endpoint."""
 
-    query: str = Field(..., min_length=1, description="The query to process")
+    query: str = Field(..., min_length=1, max_length=5000, description="The query to process")
     context: dict[str, Any] | None = Field(None, description="Optional context")
     workflow: str = Field("auto", description="Workflow type (auto, development, production)")
 
@@ -209,9 +211,15 @@ async def health_check(request: Request):
     # Check component health
     components = {
         "orchestrator": "healthy" if orchestrator else "not_initialized",
-        "container": "healthy" if container else "not_initialized",
         "config": "healthy",
     }
+    
+    # Check container health by trying to access it
+    try:
+        current_container = get_container()
+        components["container"] = "healthy" if current_container else "not_initialized"
+    except Exception:
+        components["container"] = "error"
 
     # Check model health if available
     try:
@@ -233,7 +241,7 @@ async def health_check(request: Request):
         status=(
             "healthy"
             if all(
-                status in ["healthy", "not_available", "unknown"] for status in components.values()
+                status in ["healthy", "not_available", "unknown", "not_initialized"] for status in components.values()
             )
             else "unhealthy"
         ),
@@ -352,7 +360,7 @@ async def process_query(request: QueryRequest, http_request: Request):
 
 @app.get("/metrics")
 async def get_metrics(request: Request):
-    """Get system metrics (placeholder for Prometheus integration)."""
+    """Get system metrics in Prometheus format."""
     # Handle authentication for admin-only endpoint
     auth_manager = get_auth_manager()
     if auth_manager and auth_manager.config.require_api_key:
@@ -366,11 +374,50 @@ async def get_metrics(request: Request):
                 raise HTTPException(status_code=401, detail="Authentication required")
             raise
     
-    return {
-        "message": "Metrics endpoint - integrate with Prometheus for production",
-        "status": "placeholder",
-        "timestamp": time.time(),
-    }
+    # Get metrics registry and generate Prometheus format
+    try:
+        registry = get_metrics_registry()
+        
+        # Generate Prometheus format metrics
+        metrics_output = []
+        
+        # Request metrics
+        metrics_output.append("# HELP synndicate_requests_total Total number of requests")
+        metrics_output.append("# TYPE synndicate_requests_total counter")
+        metrics_output.append(f"synndicate_requests_total {registry.get_counter('requests_total', 0)}")
+        
+        # Response time metrics
+        metrics_output.append("# HELP synndicate_response_time_seconds Response time in seconds")
+        metrics_output.append("# TYPE synndicate_response_time_seconds histogram")
+        metrics_output.append(f"synndicate_response_time_seconds_sum {registry.get_histogram_sum('response_time', 0.0)}")
+        metrics_output.append(f"synndicate_response_time_seconds_count {registry.get_histogram_count('response_time', 0)}")
+        
+        # Active connections
+        metrics_output.append("# HELP synndicate_active_connections Number of active connections")
+        metrics_output.append("# TYPE synndicate_active_connections gauge")
+        metrics_output.append(f"synndicate_active_connections {registry.get_gauge('active_connections', 0)}")
+        
+        # Orchestrator executions
+        metrics_output.append("# HELP synndicate_orchestrator_executions_total Total orchestrator executions")
+        metrics_output.append("# TYPE synndicate_orchestrator_executions_total counter")
+        metrics_output.append(f"synndicate_orchestrator_executions_total {registry.get_counter('orchestrator_executions', 0)}")
+        
+        # Agent invocations
+        metrics_output.append("# HELP synndicate_agent_invocations_total Total agent invocations")
+        metrics_output.append("# TYPE synndicate_agent_invocations_total counter")
+        metrics_output.append(f"synndicate_agent_invocations_total {registry.get_counter('agent_invocations', 0)}")
+        
+        metrics_text = "\n".join(metrics_output) + "\n"
+        
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse(
+            content=metrics_text,
+            media_type="text/plain; version=0.0.4; charset=utf-8"
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to generate metrics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate metrics")
 
 
 @app.exception_handler(Exception)

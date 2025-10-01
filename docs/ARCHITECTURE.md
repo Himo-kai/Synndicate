@@ -7,10 +7,12 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 ## 🎯 **Core Design Principles**
 
 ### **1. Observability First**
-- Every operation is traced with unique trace IDs
-- Structured logging with consistent schema
-- Performance probes on all hot paths
-- Complete audit trails for compliance
+- **Distributed Tracing**: Multi-backend support (Jaeger, Zipkin, OTLP) with automatic span creation
+- **Trace IDs**: Every operation is traced with unique trace IDs across all components
+- **Structured Logging**: Single-line JSON format with trace correlation and consistent schema
+- **Performance Probes**: Always-on timing and success metrics on all hot paths
+- **Health Monitoring**: Backend health checks, automatic failover, and graceful shutdown
+- **Complete Audit Trails**: Trace snapshots and audit bundles for compliance and debugging
 
 ### **2. Deterministic Behavior**
 - Seeded random number generators
@@ -59,6 +61,58 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 │  └─────────────────┘  └──────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+## 📊 **Distributed Tracing Architecture**
+
+### **Multi-Backend Support**
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Synndicate Application                   │
+├─────────────────────────────────────────────────────────────┤
+│  DistributedTracingManager  │  TracingManager (OpenTelemetry)│
+├─────────────────────────────────────────────────────────────┤
+│                    OTLP Exporters                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │    gRPC     │  │    HTTP     │  │      Console        │  │
+│  │  Exporter   │  │  Exporter   │  │     Exporter        │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+├─────────────────────────────────────────────────────────────┤
+│                  Tracing Backends                          │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   Jaeger    │  │   Zipkin    │  │   Custom OTLP       │  │
+│  │ :14250/16686│  │   :9411     │  │   Collector         │  │
+│  └─────────────┘  └─────────────┘  └─────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### **Trace Flow**
+```python
+# 1. Application startup - initialize distributed tracing
+distributed_manager = DistributedTracingManager(
+    backend=TracingBackend.JAEGER,
+    sample_rate=1.0,
+    batch_timeout=5000
+)
+tracing_manager = TracingManager(distributed_manager=distributed_manager)
+tracing_manager.initialize()
+
+# 2. Request processing - automatic span creation
+with tracing_manager.start_span("api.query") as span:
+    span.set_attribute("query.length", len(query))
+    result = await process_query(query)
+    span.set_attribute("result.success", True)
+
+# 3. Agent processing - nested spans
+with tracing_manager.start_span("agent.planner.process") as span:
+    span.set_attribute("agent.type", "planner")
+    plan = await planner.process(query)
+```
+
+### **Configuration Flexibility**
+- **Environment Variables**: `SYN_OBSERVABILITY__TRACING_*` for runtime configuration
+- **Settings Files**: Pydantic-based configuration with validation
+- **Programmatic Setup**: Direct API for custom integrations
+- **Docker Integration**: Ready-to-use compose files for all backends
 
 ## 🔄 **Request Flow**
 
@@ -138,6 +192,16 @@ save_performance_data(trace_id, perf_metrics)
 - **Providers**: Local (llama.cpp), API (OpenAI), Embedding (sentence-transformers)
 - **Features**: Health monitoring, automatic fallback, performance tracking
 - **Configuration**: Model endpoints, parameters, retry policies
+
+### Models System
+
+The models system provides a unified interface for language and embedding models with support for local and remote providers.
+
+### Components
+- **ModelManager**: Central model lifecycle management ([manager.py](../src/synndicate/models/manager.py))
+- **Providers**: LocalLlamaProvider, LocalBGEProvider, OpenAIProvider ([providers.py](../src/synndicate/models/providers.py))
+- **Interfaces**: Abstract base classes for type safety ([interfaces.py](../src/synndicate/models/interfaces.py))
+- **Test Coverage**: 88% interfaces, 42% manager, 46% providers ([test_models_comprehensive.py](../tests/test_models_comprehensive.py))
 
 ### **RAG Engine**
 - **Retrieval**: Hybrid search (vector + keyword + semantic)

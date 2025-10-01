@@ -13,9 +13,12 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Agent Factory**: Dynamic agent creation with dependency injection
 
 ### **🧠 Language Model Integration**
-- **Local Models**: TinyLlama 1.1B (638MB) with llama.cpp integration
-- **Embedding Models**: BGE-small-en-v1.5 (384-dimensional embeddings)
-- **API Fallback**: OpenAI API support for production scaling
+- **Model Manager**: Comprehensive lifecycle management with health monitoring ([manager.py](src/synndicate/models/manager.py))
+- **Local Models**: TinyLlama 1.1B (638MB) with llama.cpp integration ([providers.py](src/synndicate/models/providers.py))
+- **Embedding Models**: BGE-small-en-v1.5 (384-dimensional embeddings) with SentenceTransformers
+- **API Fallback**: OpenAI API support for production scaling with async client management
+- **Model Interfaces**: Type-safe abstractions for language and embedding models ([interfaces.py](src/synndicate/models/interfaces.py))
+- **Test Coverage**: 88% interfaces, 42% manager, 46% providers with comprehensive test suite ([test_models_comprehensive.py](tests/test_models_comprehensive.py))
 - **Performance**: 9.4 words/sec average throughput with full observability
 
 ### **📚 Advanced RAG System**
@@ -27,10 +30,22 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Embedding Cache**: Persistent caching for improved performance
 
 ### **🔍 Enterprise Observability**
-- **Trace IDs**: End-to-end request tracking across all components
-- **Structured Logging**: Single-line JSON format with full context
-- **Performance Probes**: Always-on timing and success metrics
-- **Audit Trails**: Complete trace snapshots for compliance and debugging
+- **Distributed Tracing**: Full Jaeger, Zipkin, and OTLP backend support with Docker deployments ([tracing.py](src/synndicate/observability/tracing.py))
+- **Trace IDs**: End-to-end request tracking across all components and services ([logging.py](src/synndicate/observability/logging.py))
+- **Structured Logging**: Single-line JSON format with full context and trace correlation
+- **Performance Probes**: Always-on timing and success metrics with Prometheus integration ([probe.py](src/synndicate/observability/probe.py))
+- **Audit Trails**: Complete trace snapshots for compliance and debugging ([audit.py](src/synndicate/core/audit.py))
+- **Health Monitoring**: Backend health checks, automatic failover, and graceful shutdown
+- **Production Ready**: Configurable sampling, batching, and resource limits
+
+### **📊 Distributed Tracing Backend**
+- **Multi-Backend Support**: Jaeger, Zipkin, OTLP, Console, or Disabled modes ([distributed_tracing.py](src/synndicate/observability/distributed_tracing.py))
+- **Docker Integration**: Ready-to-use Docker Compose configurations ([config/tracing/](config/tracing/))
+- **Flexible Configuration**: Environment variables, settings files ([settings.py](src/synndicate/config/settings.py)), or programmatic setup
+- **Performance Optimization**: Configurable sampling rates, batching, and resource limits
+- **Health Monitoring**: Automatic backend health checks and failover mechanisms
+- **Production Deployment**: Kubernetes manifests and production hardening guides
+- **Comprehensive Documentation**: Complete setup and troubleshooting guide ([distributed-tracing.md](docs/distributed-tracing.md))
 
 ### **⚙️ Production Infrastructure**
 - **FastAPI Server**: RESTful API with `/health` and `/query` endpoints ([server.py](src/synndicate/api/server.py))
@@ -47,6 +62,10 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Ubuntu/Debian** (CI/CD and production)
 - **macOS** (development)
 - **Windows** (via WSL2 recommended)
+
+**Optional Dependencies:**
+- **Docker** (for distributed tracing backends)
+- **Docker Compose** (for multi-service deployments)
 
 **Dependencies:**
 ```bash
@@ -91,11 +110,32 @@ export SYN_RAG_VECTOR_API_KEY="your-secret-key"
 # Embedding cache
 export SYN_EMBEDDING_CACHE_PATH="$HOME/.synndicate/emb_cache.json"
 
+# Distributed tracing configuration
+export SYN_OBSERVABILITY__TRACING_BACKEND="jaeger"  # jaeger, zipkin, otlp, console, disabled
+export SYN_OBSERVABILITY__TRACING_SAMPLE_RATE="1.0"  # 0.0-1.0
+export SYN_OBSERVABILITY__TRACING_ENDPOINT="http://localhost:14250"  # optional custom endpoint
+
 # Deterministic behavior
 export SYN_SEED="42"
 ```
 
 ### **Basic Usage**
+
+**Start Distributed Tracing Backend (Optional)**
+```bash
+# Start Jaeger (recommended) - see config/tracing/jaeger-docker-compose.yml
+cd config/tracing
+docker-compose -f jaeger-docker-compose.yml up -d
+# Access Jaeger UI at: http://localhost:16686
+
+# OR start Zipkin - see config/tracing/zipkin-docker-compose.yml
+docker-compose -f zipkin-docker-compose.yml up -d
+# Access Zipkin UI at: http://localhost:9411
+
+# OR start full stack - see config/tracing/docker-compose.yml
+docker-compose up -d
+cd ../..
+```
 
 **Start Vector Store (Optional - for distributed RAG)**
 ```bash
@@ -176,7 +216,6 @@ RAG Retriever → HTTP Client → Vector Store API → In-Memory Index → Persi
   Embedding     Auth Headers    CRUD Endpoints   Cosine Search   JSON Snapshots
 ```
 
-## 📊 **Performance & Observability**
 
 ### **Current Metrics**
 - **Language Model**: TinyLlama 1.1B at 9.4 words/sec average
@@ -190,6 +229,17 @@ RAG Retriever → HTTP Client → Vector Store API → In-Memory Index → Persi
 - **Structured Logs**: JSON format with timestamp, level, component, trace_id
 - **Performance Probes**: Sub-millisecond timing for all operations
 - **Audit Bundles**: Complete system state snapshots with deterministic hashing
+
+## 🔧 **Development & Testing**
+
+### **Test Coverage**: 20% overall with major improvements in critical modules ([test coverage report](build/coverage/))
+- **Models System**: 88% interfaces, 42% manager, 46% providers ([test_models_comprehensive.py](tests/test_models_comprehensive.py))
+- **Main Entry**: 92% success rate with comprehensive lifecycle testing ([test_main_entry.py](tests/test_main_entry.py))
+- **State Machine**: 71% coverage with 100% test success rate ([test_state_machine_focused.py](tests/test_state_machine_focused.py))
+- **Orchestrator**: 43% coverage with complete workflow testing ([test_orchestrator_focused.py](tests/test_orchestrator_focused.py))
+- **CI/CD Pipeline**: GitHub Actions with automated testing, linting, and Docker builds ([.github/workflows/](.github/workflows/))
+- **Code Quality**: Black, Ruff, MyPy with comprehensive pre-commit hooks ([pyproject.toml](pyproject.toml))
+- **Documentation**: Architecture guides, API docs, and troubleshooting resources ([docs/](docs/))
 
 ## 🐳 **Docker & Deployment**
 
@@ -284,6 +334,17 @@ SYN_ENVIRONMENT=development|production
 SYN_SEED=42                                    # Deterministic behavior
 SYN_LOG_LEVEL=INFO|DEBUG|WARNING|ERROR
 
+# Distributed Tracing
+SYN_OBSERVABILITY__TRACING_BACKEND=jaeger      # jaeger, zipkin, otlp, console, disabled
+SYN_OBSERVABILITY__TRACING_PROTOCOL=grpc       # grpc, http
+SYN_OBSERVABILITY__TRACING_ENDPOINT=http://localhost:14250  # Custom endpoint (optional)
+SYN_OBSERVABILITY__TRACING_SAMPLE_RATE=1.0     # Sampling rate (0.0-1.0)
+SYN_OBSERVABILITY__TRACING_BATCH_TIMEOUT=5000  # Batch timeout (ms)
+SYN_OBSERVABILITY__TRACING_MAX_BATCH_SIZE=512  # Max batch size
+SYN_OBSERVABILITY__TRACING_HEALTH_CHECK=true   # Enable health checks
+SYN_OBSERVABILITY__SERVICE_NAME=synndicate      # Service identification
+SYN_OBSERVABILITY__SERVICE_VERSION=2.0.0       # Service version
+
 # RAG and Vector Store
 SYN_RAG_VECTOR_API=http://localhost:8080       # Vector store URL
 SYN_RAG_VECTOR_API_KEY=your-secret-key        # Client auth key
@@ -302,6 +363,7 @@ OPENAI_API_KEY=sk-...                         # OpenAI fallback
 - [`pyproject.toml`](pyproject.toml): Project metadata and dependencies
 - [`docker-compose.vectorstore.yml`](docker-compose.vectorstore.yml): Vector store deployment
 - [`config/deployment/`](config/deployment/): Deployment configurations (nginx.conf, docker-compose.yml)
+- [`config/tracing/`](config/tracing/): Distributed tracing Docker Compose configurations
 - [`examples/`](examples/): Demo scripts and usage examples (demo_synndicate.py)
 - [`.github/workflows/`](.github/workflows/): CI/CD pipelines for Ubuntu runners
 - [`scripts/`](scripts/): CLI tools and development utilities
@@ -309,24 +371,24 @@ OPENAI_API_KEY=sk-...                         # OpenAI fallback
 ## 📁 **Project Structure**
 ```
 synndicate/
-├── src/synndicate/
-│   ├── agents/          # Multi-agent system
-│   ├── api/             # FastAPI server
-│   ├── config/          # Settings and dependency injection
-│   ├── core/            # Orchestration and state management
-│   ├── models/          # Language and embedding model interfaces
-│   ├── observability/   # Logging, tracing, metrics
-│   ├── rag/             # Retrieval-augmented generation
-│   └── storage/         # Artifact and data storage
-├── config/
-│   └── deployment/      # Deployment configurations
-├── examples/            # Demo scripts and usage examples
-├── scripts/             # CLI tools and utilities
-├── tests/               # Test suites
-├── validation/          # Validation scripts
-├── docker-compose.vectorstore.yml
-├── Dockerfile.vectorstore
-└── .github/workflows/   # CI/CD for cross-platform testing
+├── src/synndicate/          # Core application code
+│   ├── agents/              # Multi-agent system (planner, coder, critic) [agents/](src/synndicate/agents/)
+│   ├── api/                 # FastAPI server and authentication [api/](src/synndicate/api/)
+│   ├── config/              # Configuration and dependency injection [config/](src/synndicate/config/)
+│   ├── core/                # Orchestrator, state machine, pipelines [core/](src/synndicate/core/)
+│   ├── models/              # Language model integration and management [models/](src/synndicate/models/)
+│   ├── observability/       # Tracing, logging, metrics, monitoring [observability/](src/synndicate/observability/)
+│   ├── rag/                 # Retrieval-augmented generation system [rag/](src/synndicate/rag/)
+│   └── storage/             # Artifact storage and audit trails [storage/](src/synndicate/storage/)
+├── tests/                   # Comprehensive test suite [tests/](tests/)
+├── scripts/                 # Utility scripts and examples [scripts/](scripts/)
+├── config/                  # Deployment configurations [config/](config/)
+│   ├── deployment/          # Docker, Kubernetes manifests [deployment/](config/deployment/)
+│   └── tracing/             # Distributed tracing configurations [tracing/](config/tracing/)
+├── docs/                    # Documentation and guides [docs/](docs/)
+├── examples/                # Usage examples and demos [examples/](examples/)
+├── validation/              # Integration and validation scripts [validation/](validation/)
+└── build/                   # Build artifacts and coverage reports [build/](build/)
 ```
 
 ### **Development Workflow**
@@ -361,6 +423,7 @@ For licensing inquiries, contact: himokai@proton.me
 - **[Architecture Guide](docs/ARCHITECTURE.md)**: System design, component interactions, and data flow
 - **[Development Guide](docs/DEVELOPMENT.md)**: Setup, coding standards, testing, and contribution workflow
 - **[Model Setup Guide](docs/MODEL_SETUP.md)**: Language model configuration and deployment options
+- **[Distributed Tracing Guide](docs/distributed-tracing.md)**: Complete setup, configuration, and troubleshooting for Jaeger, Zipkin, and OTLP backends
 
 ### **API Documentation**
 - **Interactive API Docs**: `http://localhost:8000/docs` (when server is running)

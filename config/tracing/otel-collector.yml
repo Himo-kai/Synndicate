@@ -1,0 +1,65 @@
+# OpenTelemetry Collector configuration for Synndicate
+# Supports multiple backends: Jaeger, Zipkin, and custom OTLP endpoints
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+  
+  memory_limiter:
+    limit_mib: 512
+  
+  resource:
+    attributes:
+      - key: service.name
+        value: synndicate
+        action: upsert
+      - key: service.version
+        value: 2.0.0
+        action: upsert
+
+exporters:
+  # Jaeger exporter
+  jaeger:
+    endpoint: jaeger:14250
+    tls:
+      insecure: true
+  
+  # Zipkin exporter
+  zipkin:
+    endpoint: http://zipkin:9411/api/v2/spans
+    format: json
+  
+  # Console exporter for debugging
+  logging:
+    loglevel: info
+  
+  # OTLP exporter for custom backends
+  otlp:
+    endpoint: ${OTLP_ENDPOINT:-http://localhost:4317}
+    tls:
+      insecure: ${OTLP_INSECURE:-true}
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [jaeger, zipkin, logging]
+  
+  extensions: []
+  
+  telemetry:
+    logs:
+      level: info
+    metrics:
+      address: 0.0.0.0:8888

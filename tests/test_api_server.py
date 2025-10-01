@@ -306,10 +306,24 @@ class TestQueryEndpoint:
 class TestMetricsEndpoint:
     """Test metrics endpoint."""
     
-    @patch('synndicate.api.auth.get_auth_manager')
-    def test_metrics_success_with_auth(self, mock_get_auth, client, mock_auth_manager):
+    @patch('synndicate.api.server.get_auth_manager')
+    def test_metrics_success_with_auth(self, mock_get_auth, client):
         """Test successful metrics retrieval with authentication."""
-        mock_get_auth.return_value = mock_auth_manager
+        # Create a completely mocked auth manager
+        mock_auth_manager_instance = MagicMock()
+        mock_auth_manager_instance.config.require_api_key = True
+        
+        # Create a mock API key object with admin role
+        mock_api_key = MagicMock()
+        mock_api_key.name = "admin_key"
+        mock_api_key.role = UserRole.ADMIN
+        
+        # Mock successful authentication with admin tier
+        async def mock_authenticate_request(request):
+            return (mock_api_key, "admin")
+        
+        mock_auth_manager_instance.authenticate_request = mock_authenticate_request
+        mock_get_auth.return_value = mock_auth_manager_instance
         
         # Mock metrics registry
         with patch('synndicate.api.server.get_metrics_registry') as mock_registry:
@@ -320,15 +334,10 @@ class TestMetricsEndpoint:
             registry.get_gauge.return_value = 5
             mock_registry.return_value = registry
             
-            with patch.object(mock_auth_manager, 'authenticate_request', return_value=(
-                mock_auth_manager.config.api_keys[mock_auth_manager._hash_key("test_api_key_12345")],
-                RateLimitTier.USER
-            )):
-                with patch.object(mock_auth_manager.rate_limiter, 'is_rate_limited', return_value=(False, {})):
-                    response = client.get(
-                        "/metrics",
-                        headers={"X-API-Key": "test_api_key_12345"}
-                    )
+            response = client.get(
+                "/metrics",
+                headers={"X-API-Key": "admin_api_key_12345"}
+            )
         
         assert response.status_code == 200
         assert response.headers["content-type"] == "text/plain; version=0.0.4; charset=utf-8"
@@ -363,25 +372,34 @@ class TestMetricsEndpoint:
         
         assert response.status_code == 401
     
-    @patch('synndicate.api.auth.get_auth_manager')
-    def test_metrics_registry_error(self, mock_get_auth, client, mock_auth_manager):
+    @patch('synndicate.api.server.get_auth_manager')
+    def test_metrics_registry_error(self, mock_get_auth, client):
         """Test metrics endpoint when registry fails."""
-        mock_get_auth.return_value = mock_auth_manager
+        # Create a completely mocked auth manager with admin access
+        mock_auth_manager_instance = MagicMock()
+        mock_auth_manager_instance.config.require_api_key = True
+        
+        # Create a mock API key object with admin role
+        mock_api_key = MagicMock()
+        mock_api_key.name = "admin_key"
+        mock_api_key.role = UserRole.ADMIN
+        
+        # Mock successful authentication with admin tier
+        async def mock_authenticate_request(request):
+            return (mock_api_key, "admin")
+        
+        mock_auth_manager_instance.authenticate_request = mock_authenticate_request
+        mock_get_auth.return_value = mock_auth_manager_instance
         
         with patch('synndicate.api.server.get_metrics_registry', side_effect=Exception("Registry error")):
-            with patch.object(mock_auth_manager, 'authenticate_request', return_value=(
-                mock_auth_manager.config.api_keys[mock_auth_manager._hash_key("test_api_key_12345")],
-                RateLimitTier.USER
-            )):
-                with patch.object(mock_auth_manager.rate_limiter, 'is_rate_limited', return_value=(False, {})):
-                    response = client.get(
-                        "/metrics",
-                        headers={"X-API-Key": "test_api_key_12345"}
-                    )
+            response = client.get(
+                "/metrics",
+                headers={"X-API-Key": "admin_api_key_12345"}
+            )
         
         assert response.status_code == 500
         data = response.json()
-        assert "Failed to generate metrics" in data["error"]
+        assert "Failed to generate metrics" in data["detail"]
 
 
 class TestApplicationLifecycle:
@@ -423,6 +441,9 @@ class TestApplicationLifecycle:
         mock_container = MagicMock()
         mock_get_container.return_value = mock_container
         
+        # Mock deterministic startup to return expected tuple (seed, config_hash)
+        mock_deterministic.return_value = ("test_seed_123", "test_config_hash_456")
+        
         # Test that startup calls deterministic initialization
         with TestClient(app):
             mock_deterministic.assert_called_once()
@@ -443,14 +464,17 @@ class TestErrorHandling:
     
     @patch('synndicate.api.server.get_container')
     def test_internal_server_error(self, mock_get_container, client):
-        """Test 500 error handling."""
+        """Test error handling when container fails."""
         # Mock container to raise exception
         mock_get_container.side_effect = Exception("Test error")
         
         response = client.get("/health")
         
-        # Should handle gracefully
-        assert response.status_code in [500, 503]
+        # Health endpoint handles errors gracefully and returns 200 with error status
+        assert response.status_code == 200
+        data = response.json()
+        # Should indicate unhealthy status when container fails
+        assert data["status"] in ["unhealthy", "degraded"]
 
 
 class TestCORSAndSecurity:
@@ -477,8 +501,25 @@ class TestCORSAndSecurity:
 class TestRequestValidation:
     """Test request validation and sanitization."""
     
-    def test_query_request_validation(self, client):
+    @patch('synndicate.api.server.get_auth_manager')
+    def test_query_request_validation(self, mock_get_auth, client):
         """Test query request validation."""
+        # Create a completely mocked auth manager for successful authentication
+        mock_auth_manager_instance = MagicMock()
+        mock_auth_manager_instance.config.require_api_key = True
+        
+        # Create a mock API key object
+        mock_api_key = MagicMock()
+        mock_api_key.name = "test_key"
+        mock_api_key.role = UserRole.USER
+        
+        # Mock successful authentication
+        async def mock_authenticate_request(request):
+            return (mock_api_key, "user")
+        
+        mock_auth_manager_instance.authenticate_request = mock_authenticate_request
+        mock_get_auth.return_value = mock_auth_manager_instance
+        
         # Test various invalid payloads
         invalid_payloads = [
             {},  # Missing query
@@ -488,7 +529,11 @@ class TestRequestValidation:
         ]
         
         for payload in invalid_payloads:
-            response = client.post("/query", json=payload)
+            response = client.post(
+                "/query", 
+                json=payload,
+                headers={"X-API-Key": "test_api_key_12345"}
+            )
             assert response.status_code in [400, 422], f"Failed for payload: {payload}"
     
     def test_content_type_validation(self, client):

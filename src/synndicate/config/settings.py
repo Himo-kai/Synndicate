@@ -135,20 +135,66 @@ class StorageConfig(BaseModel):
 class ObservabilityConfig(BaseModel):
     """Configuration for observability and monitoring."""
 
+    # General observability
     enable_tracing: bool = Field(True)
     enable_metrics: bool = Field(True)
     enable_logging: bool = Field(True)
     log_level: str = Field("INFO")
-    log_format: str = Field("json")  # json or console
-
-    # OpenTelemetry configuration
-    otlp_endpoint: str | None = Field(None)
+    log_format: str = Field("json")
     service_name: str = Field("synndicate")
     service_version: str = Field("2.0.0")
-
-    # Metrics configuration
     metrics_port: int = Field(9090, gt=0, le=65535)
     enable_custom_metrics: bool = Field(True)
+    
+    # Distributed tracing configuration
+    tracing_backend: str = Field(
+        "jaeger", 
+        description="Tracing backend: jaeger, zipkin, otlp, console, disabled"
+    )
+    tracing_protocol: str = Field(
+        "grpc", 
+        description="Tracing protocol: grpc, http"
+    )
+    tracing_endpoint: str | None = Field(
+        None, 
+        description="Custom tracing endpoint (overrides backend defaults)"
+    )
+    tracing_sample_rate: float = Field(
+        1.0, 
+        ge=0.0, 
+        le=1.0, 
+        description="Trace sampling rate (0.0-1.0)"
+    )
+    tracing_batch_timeout: int = Field(
+        5000, 
+        gt=0, 
+        description="Batch timeout in milliseconds"
+    )
+    tracing_max_batch_size: int = Field(
+        512, 
+        gt=0, 
+        description="Maximum batch size for span export"
+    )
+    tracing_max_queue_size: int = Field(
+        2048, 
+        gt=0, 
+        description="Maximum queue size for span processing"
+    )
+    tracing_health_check: bool = Field(
+        True, 
+        description="Enable tracing backend health checks"
+    )
+    tracing_health_check_interval: int = Field(
+        30, 
+        gt=0, 
+        description="Health check interval in seconds"
+    )
+    
+    # Legacy OTLP support (for backward compatibility)
+    otlp_endpoint: str | None = Field(
+        None, 
+        description="Legacy OTLP endpoint (use tracing_endpoint instead)"
+    )
 
 
 class APIConfig(BaseModel):

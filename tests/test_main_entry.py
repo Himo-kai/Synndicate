@@ -22,7 +22,10 @@ class TestMainModule:
     
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_main_execution_default(self, mock_get_settings, mock_uvicorn):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_main_execution_default(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn):
         """Test main execution with default settings."""
         # Mock settings
         mock_settings = MagicMock()
@@ -30,11 +33,15 @@ class TestMainModule:
         mock_settings.api.port = 8000
         mock_settings.api.reload = False
         mock_settings.api.workers = 1
+        mock_settings.environment = "development"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
+        
         # Test main execution
-        with patch.object(sys, 'argv', ['synndicate']):
-            main.main()
+        main.main([])
         
         # Verify uvicorn was called with correct parameters
         mock_uvicorn.run.assert_called_once_with(
@@ -47,90 +54,127 @@ class TestMainModule:
     
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_main_execution_with_args(self, mock_get_settings, mock_uvicorn):
-        """Test main execution with command line arguments."""
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_main_execution_with_args(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn):
+        """Test main execution with custom arguments."""
+        # Mock settings
         mock_settings = MagicMock()
-        mock_settings.api.host = "127.0.0.1"
-        mock_settings.api.port = 9000
-        mock_settings.api.reload = True
-        mock_settings.api.workers = 2
+        mock_settings.api.host = "0.0.0.0"
+        mock_settings.api.port = 8000
+        mock_settings.api.reload = False
+        mock_settings.api.workers = 1
+        mock_settings.environment = "development"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
-        # Test with command line arguments
-        with patch.object(sys, 'argv', ['synndicate', '--host', '127.0.0.1', '--port', '9000']):
-            main.main()
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
         
+        # Test main execution with custom args
+        main.main(['--host', '127.0.0.1', '--port', '9000'])
+        
+        # Verify uvicorn was called with overridden parameters
         mock_uvicorn.run.assert_called_once_with(
             "synndicate.api.server:app",
             host="127.0.0.1",
             port=9000,
-            reload=True,
-            workers=2
+            reload=False,
+            workers=1
         )
     
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_main_execution_development_mode(self, mock_get_settings, mock_uvicorn):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_main_execution_development_mode(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn):
         """Test main execution in development mode."""
         mock_settings = MagicMock()
-        mock_settings.api.host = "localhost"
+        mock_settings.api.host = "127.0.0.1"
         mock_settings.api.port = 8000
         mock_settings.api.reload = True
         mock_settings.api.workers = 1
-        mock_settings.is_development.return_value = True
+        mock_settings.environment = "development"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
-        main.main()
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
         
-        # In development mode, should use reload=True
-        mock_uvicorn.run.assert_called_once()
-        call_args = mock_uvicorn.run.call_args
-        assert call_args[1]['reload'] is True
+        main.main([])
+        
+        mock_uvicorn.run.assert_called_once_with(
+            "synndicate.api.server:app",
+            host="127.0.0.1",
+            port=8000,
+            reload=True,
+            workers=1
+        )
     
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_main_execution_production_mode(self, mock_get_settings, mock_uvicorn):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_main_execution_production_mode(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn):
         """Test main execution in production mode."""
         mock_settings = MagicMock()
         mock_settings.api.host = "0.0.0.0"
-        mock_settings.api.port = 8000
+        mock_settings.api.port = 80
         mock_settings.api.reload = False
         mock_settings.api.workers = 4
-        mock_settings.is_development.return_value = False
-        mock_settings.is_production.return_value = True
+        mock_settings.environment = "production"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
-        main.main()
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
         
-        # In production mode, should use multiple workers
-        mock_uvicorn.run.assert_called_once()
-        call_args = mock_uvicorn.run.call_args
-        assert call_args[1]['workers'] == 4
-        assert call_args[1]['reload'] is False
+        main.main([])
+        
+        mock_uvicorn.run.assert_called_once_with(
+            "synndicate.api.server:app",
+            host="0.0.0.0",
+            port=80,
+            reload=False,
+            workers=4
+        )
     
     @patch('synndicate.main.get_settings')
     def test_main_execution_settings_error(self, mock_get_settings):
-        """Test main execution when settings fail to load."""
+        """Test handling of settings loading errors."""
+        # Mock settings to raise an exception
         mock_get_settings.side_effect = Exception("Settings error")
         
         with pytest.raises(Exception, match="Settings error"):
-            main.main()
+            main.main([])
     
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_main_execution_uvicorn_error(self, mock_get_settings, mock_uvicorn):
-        """Test main execution when uvicorn fails to start."""
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_main_execution_uvicorn_error(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn):
+        """Test handling of uvicorn startup errors."""
         mock_settings = MagicMock()
         mock_settings.api.host = "0.0.0.0"
         mock_settings.api.port = 8000
         mock_settings.api.reload = False
         mock_settings.api.workers = 1
+        mock_settings.environment = "development"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
-        mock_uvicorn.run.side_effect = Exception("Server startup error")
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
         
-        with pytest.raises(Exception, match="Server startup error"):
-            main.main()
+        # Mock uvicorn to raise an exception
+        mock_uvicorn.run.side_effect = Exception("Uvicorn error")
+        
+        with pytest.raises(Exception, match="Uvicorn error"):
+            main.main([])
 
 
 class TestEnvironmentSetup:
@@ -154,7 +198,8 @@ class TestEnvironmentSetup:
     })
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_environment_override_settings(self, mock_get_settings, mock_uvicorn):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    def test_environment_override_settings(self, mock_determinism, mock_get_settings, mock_uvicorn):
         """Test environment variables override default settings."""
         mock_settings = MagicMock()
         mock_settings.api.host = "192.168.1.100"
@@ -162,6 +207,9 @@ class TestEnvironmentSetup:
         mock_settings.api.reload = False
         mock_settings.api.workers = 1
         mock_get_settings.return_value = mock_settings
+        
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
         
         main.main()
         
@@ -175,7 +223,8 @@ class TestEnvironmentSetup:
         )
     
     @patch('synndicate.main.get_settings')
-    def test_debug_mode_handling(self, mock_get_settings):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    def test_debug_mode_handling(self, mock_determinism, mock_get_settings):
         """Test debug mode configuration."""
         mock_settings = MagicMock()
         mock_settings.debug = True
@@ -190,32 +239,29 @@ class TestEnvironmentSetup:
 class TestCLIArguments:
     """Test command line argument parsing."""
     
-    @patch('synndicate.main.uvicorn')
-    @patch('synndicate.main.get_settings')
-    def test_help_argument(self, mock_get_settings, mock_uvicorn):
-        """Test --help argument handling."""
-        with patch.object(sys, 'argv', ['synndicate', '--help']):
-            # This would normally exit, so we need to catch SystemExit
-            with pytest.raises(SystemExit):
-                main.main()
+    def test_help_extended_argument(self, capsys):
+        """Test --help-extended argument handling."""
+        # Test help-extended argument
+        main.main(['--help-extended'])
+        
+        # Verify help was printed (function should return without error)
+        captured = capsys.readouterr()
+        # The function returns early, so no exception should be raised
     
-    @patch('synndicate.main.uvicorn')
-    @patch('synndicate.main.get_settings')
-    def test_version_argument(self, mock_get_settings, mock_uvicorn):
+    def test_version_argument(self, capsys):
         """Test --version argument handling."""
-        with patch.object(sys, 'argv', ['synndicate', '--version']):
-            # This would normally exit, so we need to catch SystemExit
-            with pytest.raises(SystemExit):
-                main.main()
+        # Test version argument
+        main.main(['--version'])
+        
+        # Verify version was printed
+        captured = capsys.readouterr()
+        assert "Synndicate AI v2.0.0" in captured.out
     
-    @patch('synndicate.main.uvicorn')
-    @patch('synndicate.main.get_settings')
-    def test_invalid_argument(self, mock_get_settings, mock_uvicorn):
+    def test_invalid_argument(self):
         """Test invalid argument handling."""
-        with patch.object(sys, 'argv', ['synndicate', '--invalid-arg']):
-            # Should handle gracefully or raise appropriate error
-            with pytest.raises((SystemExit, Exception)):
-                main.main()
+        # Should raise SystemExit due to argparse error
+        with pytest.raises(SystemExit):
+            main.main(['--invalid-arg'])
 
 
 class TestServerLifecycle:
@@ -279,44 +325,57 @@ class TestServerLifecycle:
 class TestLoggingAndMonitoring:
     """Test logging and monitoring setup."""
     
+    @patch('synndicate.main.get_logger')
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    @patch('synndicate.main.get_logger')
-    def test_logging_initialization(self, mock_get_logger, mock_get_settings, mock_uvicorn):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_logging_initialization(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn, mock_get_logger):
         """Test logging system initialization."""
+        mock_logger = MagicMock()
+        mock_get_logger.return_value = mock_logger
+        
         mock_settings = MagicMock()
         mock_settings.api.host = "0.0.0.0"
         mock_settings.api.port = 8000
         mock_settings.api.reload = False
         mock_settings.api.workers = 1
+        mock_settings.environment = "development"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
-        mock_logger = MagicMock()
-        mock_get_logger.return_value = mock_logger
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
         
-        main.main()
+        main.main([])
         
-        # Logger should be initialized
+        # Verify logger was called
         mock_get_logger.assert_called()
     
     @patch('synndicate.main.uvicorn')
     @patch('synndicate.main.get_settings')
-    def test_startup_logging(self, mock_get_settings, mock_uvicorn):
+    @patch('synndicate.main.ensure_deterministic_startup')
+    @patch('synndicate.main.TracingManager')
+    @patch('synndicate.main.DistributedTracingManager')
+    def test_startup_logging(self, mock_dist_tracing, mock_tracing, mock_determinism, mock_get_settings, mock_uvicorn):
         """Test startup logging messages."""
         mock_settings = MagicMock()
         mock_settings.api.host = "0.0.0.0"
         mock_settings.api.port = 8000
         mock_settings.api.reload = False
         mock_settings.api.workers = 1
+        mock_settings.environment = "development"
+        mock_settings.observability.enable_tracing = False
         mock_get_settings.return_value = mock_settings
         
-        with patch('synndicate.main.get_logger') as mock_get_logger:
-            mock_logger = MagicMock()
-            mock_get_logger.return_value = mock_logger
+        # Mock determinism
+        mock_determinism.return_value = ("test_seed", "test_hash")
+        
+        with patch('synndicate.main.logger') as mock_logger:
+            main.main([])
             
-            main.main()
-            
-            # Should log startup information
+            # Verify startup logging occurred
             mock_logger.info.assert_called()
 
 

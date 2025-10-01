@@ -29,6 +29,42 @@ python -m synndicate.main
 make test
 ```
 
+### **Distributed Tracing Development Setup**
+```bash
+# 1. Start local tracing backend for development
+cd config/tracing
+
+# Option A: Start Jaeger (recommended for development)
+docker-compose -f jaeger-docker-compose.yml up -d
+# Access UI: http://localhost:16686
+
+# Option B: Start Zipkin (lightweight alternative)
+docker-compose -f zipkin-docker-compose.yml up -d
+# Access UI: http://localhost:9411
+
+# Option C: Start full stack (all backends)
+docker-compose up -d
+
+cd ../..
+
+# 2. Configure tracing for development
+export SYN_OBSERVABILITY__TRACING_BACKEND="jaeger"
+export SYN_OBSERVABILITY__TRACING_SAMPLE_RATE="1.0"  # 100% sampling for dev
+export SYN_OBSERVABILITY__TRACING_HEALTH_CHECK="true"
+
+# 3. Test tracing integration
+python -c "
+from synndicate.observability.distributed_tracing import DistributedTracingManager
+from synndicate.observability.tracing import TracingManager
+manager = DistributedTracingManager()
+print(f'✅ Tracing backend: {manager.config.backend}')
+"
+
+# 4. Verify traces are being sent
+# Run a query and check the tracing UI for spans
+curl -X POST http://localhost:8000/query -H "Content-Type: application/json" -d '{"query": "test"}'
+```
+
 ## 🛠️ **Development Workflow**
 
 ### **Code Quality Standards**
@@ -50,16 +86,20 @@ make audit
 
 ### **Testing Strategy**
 ```bash
-# Unit tests
-pytest tests/ -v
+# Run all tests
+pytest
 
-# Integration tests
-python test_tinyllama_complete.py
-python test_trace_integration.py
+# Run with coverage
+pytest --cov=src/synndicate --cov-report=html
 
-# Coverage reporting
-pytest --cov=synndicate --cov-report=html
-open htmlcov/index.html
+# Run specific test modules
+pytest tests/test_models_comprehensive.py  # Models system tests
+pytest tests/test_main_entry.py            # Main entry point tests
+pytest tests/test_state_machine_focused.py # State machine tests
+pytest tests/test_orchestrator_focused.py  # Orchestrator tests
+
+# Run with verbose output and coverage
+pytest -v --cov=src/synndicate --cov-report=term-missing
 ```
 
 ### **Development Server**
@@ -134,7 +174,22 @@ class MyConfig(BaseModel):
 # SYN_MY_CONFIG__RETRIES=5
 ```
 
-## 🧪 **Testing Guidelines**
+## 🧪 **Testing**
+
+### **Distributed Tracing Testing**
+```bash
+# Test distributed tracing functionality
+pytest tests/test_distributed_tracing.py -v
+
+# Test with different backends
+SYN_OBSERVABILITY__TRACING_BACKEND=console pytest tests/test_distributed_tracing.py
+SYN_OBSERVABILITY__TRACING_BACKEND=disabled pytest tests/test_distributed_tracing.py
+
+# Integration testing with tracing enabled
+SYN_OBSERVABILITY__TRACING_BACKEND=jaeger pytest tests/test_orchestrator.py -v
+```
+
+### **Running Tests**
 
 ### **Test Structure**
 ```python
