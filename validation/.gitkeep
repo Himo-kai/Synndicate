@@ -1,0 +1,3 @@
+# Keep this directory in git
+# This directory contains validation scripts and tools for testing system functionality
+# Used for end-to-end validation and integration testing

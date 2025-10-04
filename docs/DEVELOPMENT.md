@@ -81,8 +81,9 @@ ruff check src/ --fix
 make format
 black src/ tests/
 
-# Type checking with MyPy
-mypy src/ --ignore-missing-imports
+# Type checking with MyPy (enhanced configuration)
+mypy src/ --config-file pyproject.toml
+# Enhanced type safety with warn_return_any and warn_unused_ignores
 
 # Run all quality checks
 make audit
