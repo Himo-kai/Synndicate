@@ -212,7 +212,7 @@ class TestDynamicAgents:
         )
 
         with patch("synndicate.agents.base.Agent.model_manager", mock_model_manager):
-            agent = DynamicCriticAgent(focus_area="security")
+            agent = DynamicCriticAgent(review_focus="security")
 
             response = await agent.process(
                 "Review this code",
@@ -368,7 +368,7 @@ class TestIntegrationWorkflows:
             assert result.workflow_type in ["plan_and_code", "planning_only"]
 
             # Check that multiple agents were involved
-            if "metadata" in result.__dict__ and result.metadata:
+            if "metadata" in result.__dict__ and result.metadata:  # noqa: SIM102
                 if "agents_used" in result.metadata:
                     assert len(result.metadata["agents_used"]) >= 1
 
@@ -388,7 +388,7 @@ class TestIntegrationWorkflows:
 
             # Check orchestration stats
             stats = full_orchestrator.get_orchestration_status()
-            dynamic_stats = stats["dynamic_orchestration"]
+            stats["dynamic_orchestration"]
 
             # Should have some recruitment history
             assert stats["recruitment_history"] >= 0

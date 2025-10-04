@@ -94,6 +94,7 @@ class EnhancedOrchestrator(Orchestrator):
         logger.info(f"Processing query with enhanced orchestrator (workflow: {workflow})")
 
         try:
+            result: OrchestratorResult
             if workflow == "dynamic":
                 result = await self._execute_dynamic_workflow(task_id, query, context)
             elif workflow == "auto":
@@ -119,14 +120,15 @@ class EnhancedOrchestrator(Orchestrator):
         except Exception as e:
             logger.error(f"Enhanced orchestrator failed: {e}")
             # Fallback to basic orchestrator with a safe workflow
-            return await super().process_query(query, context, "auto")
+            fallback_result: OrchestratorResult = await super().process_query(query, context, "auto")
+            return fallback_result
 
     @trace_span("enhanced_orchestrator.dynamic_workflow")
     async def _execute_dynamic_workflow(
         self, task_id: str, query: str, context: dict[str, Any] | None
     ) -> OrchestratorResult:
         """Execute a workflow with dynamic agent management."""
-        start_time = time.time()
+        time.time()
 
         try:
             # Step 1: Analyze task requirements

@@ -3,12 +3,14 @@
 ## 🚀 **Getting Started**
 
 ### **Prerequisites**
+
 - Python 3.11+ (3.13 recommended)
 - Git for version control
 - Make for build automation
 - curl for API testing
 
 ### **Development Setup**
+
 ```bash
 # 1. Clone repository
 git clone <repository-url>
@@ -30,6 +32,7 @@ make test
 ```
 
 ### **Distributed Tracing Development Setup**
+
 ```bash
 # 1. Start local tracing backend for development
 cd config/tracing
@@ -68,6 +71,7 @@ curl -X POST http://localhost:8000/query -H "Content-Type: application/json" -d 
 ## 🛠️ **Development Workflow**
 
 ### **Code Quality Standards**
+
 ```bash
 # Linting with Ruff
 make lint
@@ -85,6 +89,7 @@ make audit
 ```
 
 ### **Testing Strategy**
+
 ```bash
 # Run all tests
 pytest
@@ -103,6 +108,7 @@ pytest -v --cov=src/synndicate --cov-report=term-missing
 ```
 
 ### **Development Server**
+
 ```bash
 # Start API server with auto-reload
 make dev
@@ -119,6 +125,7 @@ curl -X POST http://localhost:8000/query \
 ## 🏗️ **Architecture Patterns**
 
 ### **Dependency Injection**
+
 ```python
 # Container-based dependency injection
 from synndicate.config.container import Container
@@ -129,6 +136,7 @@ agent = container.get_agent("planner")
 ```
 
 ### **Protocol-Based Design**
+
 ```python
 # Define interfaces with protocols
 from typing import Protocol
@@ -145,6 +153,7 @@ class PlannerAgent(AgentInterface):
 ```
 
 ### **Observability Integration**
+
 ```python
 # Add observability to any function
 from synndicate.observability.probe import probe
@@ -160,6 +169,7 @@ async def my_function(data: str) -> str:
 ```
 
 ### **Configuration Management**
+
 ```python
 # Pydantic-based configuration
 from pydantic import BaseModel, Field
@@ -177,6 +187,7 @@ class MyConfig(BaseModel):
 ## 🧪 **Testing**
 
 ### **Distributed Tracing Testing**
+
 ```bash
 # Test distributed tracing functionality
 pytest tests/test_distributed_tracing.py -v
@@ -192,6 +203,7 @@ SYN_OBSERVABILITY__TRACING_BACKEND=jaeger pytest tests/test_orchestrator.py -v
 ### **Running Tests**
 
 ### **Test Structure**
+
 ```python
 # tests/test_my_module.py
 import pytest
@@ -209,6 +221,7 @@ class TestMyClass:
 ```
 
 ### **Integration Testing**
+
 ```python
 # Test with observability
 from synndicate.observability.probe import get_trace_metrics
@@ -225,6 +238,7 @@ async def test_with_observability():
 ```
 
 ### **Mock External Dependencies**
+
 ```python
 # Mock model calls for testing
 from unittest.mock import AsyncMock, patch
@@ -244,6 +258,7 @@ async def test_agent_processing(mock_generate):
 ## 📊 **Debugging & Monitoring**
 
 ### **Trace-Based Debugging**
+
 ```python
 # Every request has a trace ID
 trace_id = get_trace_id()
@@ -257,6 +272,7 @@ cat artifacts/perf_<trace_id>.jsonl
 ```
 
 ### **Log Analysis**
+
 ```bash
 # Structured log filtering
 grep "trace=abc123" logs/latest.log
@@ -267,6 +283,7 @@ grep "ms=" logs/latest.log | sort -k3 -n
 ```
 
 ### **Health Monitoring**
+
 ```bash
 # Component health
 curl http://localhost:8000/health | jq .
@@ -278,6 +295,7 @@ curl http://localhost:8000/health | jq .components.models
 ## 🔧 **Adding New Features**
 
 ### **Creating a New Agent**
+
 ```python
 # 1. Define agent interface
 class MyAgent(AgentInterface):
@@ -302,6 +320,7 @@ def create_agent(self, agent_type: str) -> AgentInterface:
 ```
 
 ### **Adding Model Providers**
+
 ```python
 # 1. Implement model interface
 class MyModelProvider(LanguageModel):
@@ -322,6 +341,7 @@ def _create_language_model(self, config: ModelConfig) -> LanguageModel:
 ```
 
 ### **Extending RAG Capabilities**
+
 ```python
 # 1. Create new chunking strategy
 class MyChunkingStrategy(ChunkingStrategy):
@@ -340,6 +360,7 @@ class MyRetriever(RAGRetriever):
 ## 🚀 **Deployment**
 
 ### **Environment Configuration**
+
 ```bash
 # Production environment variables
 export SYN_ENVIRONMENT=production
@@ -354,6 +375,7 @@ export SYN_MODELS__PLANNER__API_KEY=sk-...
 ```
 
 ### **Docker Deployment**
+
 ```dockerfile
 # Dockerfile
 FROM python:3.11-slim
@@ -367,6 +389,7 @@ CMD ["uvicorn", "synndicate.api.server:app", "--host", "0.0.0.0", "--port", "800
 ```
 
 ### **Health Checks**
+
 ```bash
 # Kubernetes health check
 livenessProbe:
@@ -380,12 +403,14 @@ livenessProbe:
 ## 📚 **Code Style Guide**
 
 ### **Naming Conventions**
+
 - Classes: `PascalCase` (e.g., `AgentFactory`)
 - Functions/Variables: `snake_case` (e.g., `process_query`)
 - Constants: `UPPER_SNAKE_CASE` (e.g., `CONFIG_SHA256`)
 - Private methods: `_leading_underscore`
 
 ### **Documentation Standards**
+
 ```python
 async def process_query(
     self, 
@@ -411,6 +436,7 @@ async def process_query(
 ```
 
 ### **Error Handling**
+
 ```python
 # Use specific exceptions
 class SyndicateError(Exception):
@@ -435,6 +461,7 @@ except Exception as e:
 ## 🔍 **Performance Guidelines**
 
 ### **Async Best Practices**
+
 ```python
 # Use async/await consistently
 async def process_items(items: list[str]) -> list[str]:
@@ -448,6 +475,7 @@ async def process_items(items: list[str]) -> list[str]:
 ```
 
 ### **Memory Management**
+
 ```python
 # Use context managers for resources
 async with model_manager.get_model("gpt-4") as model:
@@ -459,6 +487,7 @@ gc.collect()
 ```
 
 ### **Caching Strategies**
+
 ```python
 # Use functools.lru_cache for expensive computations
 from functools import lru_cache
@@ -472,6 +501,7 @@ def expensive_computation(input_data: str) -> str:
 ## 🤝 **Contributing**
 
 ### **Pull Request Process**
+
 1. Fork the repository
 2. Create feature branch: `git checkout -b feature/my-feature`
 3. Make changes with tests
@@ -480,15 +510,15 @@ def expensive_computation(input_data: str) -> str:
 6. Push and create pull request
 
 ### **Commit Message Format**
-```
+
 feat: add new agent type for code review
 fix: resolve trace ID propagation issue
 docs: update API documentation
 test: add integration tests for RAG system
 refactor: improve model manager error handling
-```
 
 ### **Code Review Checklist**
+
 - [ ] Tests added/updated
 - [ ] Documentation updated
 - [ ] Observability integrated

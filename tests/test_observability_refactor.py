@@ -12,19 +12,14 @@ import uuid
 sys.path.insert(0, "src")
 
 from synndicate.config.settings import get_settings
-from synndicate.observability.logging import (
-    clear_trace_id,
-    get_logger,
-    get_trace_id,
-    set_trace_id,
-    setup_logging,
-)
-from synndicate.observability.probe import clear_trace_metrics, get_trace_metrics, probe
-from synndicate.storage.artifacts import (
-    get_artifact_store,
-    save_performance_data,
-    save_trace_snapshot,
-)
+from synndicate.observability.logging import (clear_trace_id, get_logger,
+                                              get_trace_id, set_trace_id,
+                                              setup_logging)
+from synndicate.observability.probe import (clear_trace_metrics,
+                                            get_trace_metrics, probe)
+from synndicate.storage.artifacts import (get_artifact_store,
+                                          save_performance_data,
+                                          save_trace_snapshot)
 
 
 async def test_structured_logging():

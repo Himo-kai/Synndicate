@@ -80,7 +80,32 @@ class StructuredLogger:
 
     def _log(self, level: int, msg: str, **kwargs):
         """Internal logging method with structured fields."""
-        extra = kwargs.copy()
+        # Filter out reserved LogRecord attributes to avoid KeyError
+        reserved_attrs = {
+            "name",
+            "msg",
+            "args",
+            "levelname",
+            "levelno",
+            "pathname",
+            "filename",
+            "module",
+            "lineno",
+            "funcName",
+            "created",
+            "msecs",
+            "relativeCreated",
+            "thread",
+            "threadName",
+            "processName",
+            "process",
+            "getMessage",
+            "exc_info",
+            "exc_text",
+            "stack_info",
+            "message",
+        }
+        extra = {k: v for k, v in kwargs.items() if k not in reserved_attrs}
         extra["trace_id"] = trace_id_ctx.get()
         self.logger.log(level, msg, extra=extra)
 

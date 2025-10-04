@@ -17,7 +17,8 @@ from synndicate.agents.planner import PlannerAgent
 from synndicate.models.interfaces import ModelConfig, ModelFormat, ModelType
 from synndicate.models.manager import ModelManager
 from synndicate.rag.chunking import SemanticChunker
-from synndicate.rag.context import ContextBuilder, ContextIntegrator, ContextStrategy
+from synndicate.rag.context import (ContextBuilder, ContextIntegrator,
+                                    ContextStrategy)
 from synndicate.rag.indexer import DocumentIndexer
 from synndicate.rag.retriever import QueryContext, RAGRetriever, SearchMode
 

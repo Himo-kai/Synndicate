@@ -169,7 +169,7 @@ class S3Store(ArtifactStore):
 
     def __init__(self, bucket: str, prefix: str = "", region: str = "us-east-1", **kwargs):
         """Initialize S3 store with boto3 client.
-        
+
         Args:
             bucket: S3 bucket name
             prefix: Optional prefix for all keys
@@ -179,33 +179,38 @@ class S3Store(ArtifactStore):
         self.bucket = bucket
         self.prefix = prefix.rstrip("/")
         self.region = region
-        
+
         try:
             import boto3
             from botocore.exceptions import ClientError, NoCredentialsError
-            
+
             # Store exceptions for later use
             self.ClientError = ClientError
             self.NoCredentialsError = NoCredentialsError
-            
+
             # Initialize S3 client with provided parameters
             client_kwargs = {"region_name": region}
             client_kwargs.update(kwargs)
-            
+
             self.s3_client = boto3.client("s3", **client_kwargs)
-            
+
             # Test connection by checking if bucket exists
             try:
                 self.s3_client.head_bucket(Bucket=bucket)
-                log.info("S3 artifact store initialized", bucket=bucket, prefix=prefix, region=region)
+                log.info(
+                    "S3 artifact store initialized", bucket=bucket, prefix=prefix, region=region
+                )
             except ClientError as e:
                 error_code = e.response["Error"]["Code"]
                 if error_code == "404":
-                    log.warning("S3 bucket does not exist, will attempt to create on first write", bucket=bucket)
+                    log.warning(
+                        "S3 bucket does not exist, will attempt to create on first write",
+                        bucket=bucket,
+                    )
                 else:
                     log.error("Failed to access S3 bucket", bucket=bucket, error=str(e))
                     raise
-                    
+
         except ImportError:
             log.error("boto3 not installed. Install with: pip install boto3")
             raise ImportError("boto3 is required for S3 storage. Install with: pip install boto3")
@@ -232,11 +237,13 @@ class S3Store(ArtifactStore):
                     else:
                         self.s3_client.create_bucket(
                             Bucket=self.bucket,
-                            CreateBucketConfiguration={"LocationConstraint": self.region}
+                            CreateBucketConfiguration={"LocationConstraint": self.region},
                         )
                     log.info("Created S3 bucket", bucket=self.bucket)
                 except self.ClientError as create_error:
-                    log.error("Failed to create S3 bucket", bucket=self.bucket, error=str(create_error))
+                    log.error(
+                        "Failed to create S3 bucket", bucket=self.bucket, error=str(create_error)
+                    )
                     raise
             else:
                 raise
@@ -245,24 +252,24 @@ class S3Store(ArtifactStore):
         """Save text content to S3."""
         self._ensure_bucket_exists()
         key = self._key(relpath)
-        
+
         try:
             self.s3_client.put_object(
                 Bucket=self.bucket,
                 Key=key,
                 Body=text.encode("utf-8"),
                 ContentType="text/plain",
-                Metadata={"synndicate-type": "text"}
+                Metadata={"synndicate-type": "text"},
             )
-            
+
             size_bytes = len(text.encode("utf-8"))
             log.debug("Saved text artifact to S3", key=key, size=size_bytes)
-            
+
             return ArtifactRef(
                 uri=f"s3://{self.bucket}/{key}",
                 backend="s3",
                 size_bytes=size_bytes,
-                content_type="text/plain"
+                content_type="text/plain",
             )
         except self.ClientError as e:
             log.error("Failed to save text to S3", key=key, error=str(e))
@@ -272,26 +279,26 @@ class S3Store(ArtifactStore):
         """Save JSON object to S3."""
         self._ensure_bucket_exists()
         key = self._key(relpath)
-        
+
         try:
             json_text = json.dumps(obj, indent=2, ensure_ascii=False)
-            
+
             self.s3_client.put_object(
                 Bucket=self.bucket,
                 Key=key,
                 Body=json_text.encode("utf-8"),
                 ContentType="application/json",
-                Metadata={"synndicate-type": "json"}
+                Metadata={"synndicate-type": "json"},
             )
-            
+
             size_bytes = len(json_text.encode("utf-8"))
             log.debug("Saved JSON artifact to S3", key=key, size=size_bytes)
-            
+
             return ArtifactRef(
                 uri=f"s3://{self.bucket}/{key}",
                 backend="s3",
                 size_bytes=size_bytes,
-                content_type="application/json"
+                content_type="application/json",
             )
         except self.ClientError as e:
             log.error("Failed to save JSON to S3", key=key, error=str(e))
@@ -301,33 +308,31 @@ class S3Store(ArtifactStore):
         """Save binary file to S3."""
         self._ensure_bucket_exists()
         key = self._key(relpath)
-        
+
         try:
             # Determine content type from file extension
             import mimetypes
+
             content_type, _ = mimetypes.guess_type(str(src_path))
             if not content_type:
                 content_type = "application/octet-stream"
-            
+
             # Upload file
             self.s3_client.upload_file(
                 str(src_path),
                 self.bucket,
                 key,
-                ExtraArgs={
-                    "ContentType": content_type,
-                    "Metadata": {"synndicate-type": "blob"}
-                }
+                ExtraArgs={"ContentType": content_type, "Metadata": {"synndicate-type": "blob"}},
             )
-            
+
             size_bytes = src_path.stat().st_size
             log.debug("Saved blob artifact to S3", key=key, size=size_bytes)
-            
+
             return ArtifactRef(
                 uri=f"s3://{self.bucket}/{key}",
                 backend="s3",
                 size_bytes=size_bytes,
-                content_type=content_type
+                content_type=content_type,
             )
         except self.ClientError as e:
             log.error("Failed to save blob to S3", key=key, error=str(e))
@@ -336,7 +341,7 @@ class S3Store(ArtifactStore):
     def read_text(self, relpath: str) -> str:
         """Read text content from S3."""
         key = self._key(relpath)
-        
+
         try:
             response = self.s3_client.get_object(Bucket=self.bucket, Key=key)
             content = response["Body"].read().decode("utf-8")
@@ -361,7 +366,7 @@ class S3Store(ArtifactStore):
     def exists(self, relpath: str) -> bool:
         """Check if artifact exists in S3."""
         key = self._key(relpath)
-        
+
         try:
             self.s3_client.head_object(Bucket=self.bucket, Key=key)
             return True
@@ -374,7 +379,7 @@ class S3Store(ArtifactStore):
     def delete(self, relpath: str) -> bool:
         """Delete artifact from S3."""
         key = self._key(relpath)
-        
+
         try:
             self.s3_client.delete_object(Bucket=self.bucket, Key=key)
             log.debug("Deleted artifact from S3", key=key)
@@ -387,11 +392,11 @@ class S3Store(ArtifactStore):
         """List all artifacts in S3 with optional prefix filter."""
         # Combine store prefix with search prefix
         full_prefix = self._key(prefix) if prefix else (self.prefix + "/" if self.prefix else "")
-        
+
         try:
             paginator = self.s3_client.get_paginator("list_objects_v2")
             pages = paginator.paginate(Bucket=self.bucket, Prefix=full_prefix)
-            
+
             artifacts = []
             for page in pages:
                 if "Contents" in page:
@@ -399,14 +404,14 @@ class S3Store(ArtifactStore):
                         key = obj["Key"]
                         # Remove store prefix to get relative path
                         if self.prefix and key.startswith(self.prefix + "/"):
-                            relpath = key[len(self.prefix) + 1:]
+                            relpath = key[len(self.prefix) + 1 :]
                         else:
                             relpath = key
                         artifacts.append(relpath)
-            
+
             log.debug("Listed S3 artifacts", count=len(artifacts), prefix=full_prefix)
             return artifacts
-            
+
         except self.ClientError as e:
             log.error("Failed to list S3 artifacts", prefix=full_prefix, error=str(e))
             raise

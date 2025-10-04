@@ -7,6 +7,7 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 ## 🎯 **Core Design Principles**
 
 ### **1. Observability First**
+
 - **Distributed Tracing**: Multi-backend support (Jaeger, Zipkin, OTLP) with automatic span creation
 - **Trace IDs**: Every operation is traced with unique trace IDs across all components
 - **Structured Logging**: Single-line JSON format with trace correlation and consistent schema
@@ -15,12 +16,14 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 - **Complete Audit Trails**: Trace snapshots and audit bundles for compliance and debugging
 
 ### **2. Deterministic Behavior**
+
 - Seeded random number generators
 - Configuration hashing for reproducibility
 - Immutable trace snapshots
 - Environment-based configuration
 
 ### **3. Protocol-Based Design**
+
 - Abstract interfaces for all components
 - Dependency injection for testability
 - Async-first architecture
@@ -28,7 +31,6 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 
 ## 🏛️ **Architecture Layers**
 
-```
 ┌─────────────────────────────────────────────────────────────┐
 │                     API Layer (FastAPI)                    │
 ├─────────────────────────────────────────────────────────────┤
@@ -60,12 +62,11 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 │  │  - Metrics      │  │  - Dependency Injection         │  │
 │  └─────────────────┘  └──────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
-```
 
 ## 📊 **Distributed Tracing Architecture**
 
 ### **Multi-Backend Support**
-```
+
 ┌─────────────────────────────────────────────────────────────┐
 │                    Synndicate Application                   │
 ├─────────────────────────────────────────────────────────────┤
@@ -83,9 +84,9 @@ Synndicate AI is built on a modern, scalable architecture designed for enterpris
 │  │ :14250/16686│  │   :9411     │  │   Collector         │  │
 │  └─────────────┘  └─────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
-```
 
 ### **Trace Flow**
+
 ```python
 # 1. Application startup - initialize distributed tracing
 distributed_manager = DistributedTracingManager(
@@ -109,6 +110,7 @@ with tracing_manager.start_span("agent.planner.process") as span:
 ```
 
 ### **Configuration Flexibility**
+
 - **Environment Variables**: `SYN_OBSERVABILITY__TRACING_*` for runtime configuration
 - **Settings Files**: Pydantic-based configuration with validation
 - **Programmatic Setup**: Direct API for custom integrations
@@ -117,6 +119,7 @@ with tracing_manager.start_span("agent.planner.process") as span:
 ## 🔄 **Request Flow**
 
 ### **1. API Request Processing**
+
 ```python
 # 1. Request arrives at FastAPI endpoint
 POST /query {"query": "Create a Python function"}
@@ -130,6 +133,7 @@ result = await orchestrator.process_query(query, context, workflow)
 ```
 
 ### **2. Orchestration Flow**
+
 ```python
 # 1. Workflow determination
 workflow = determine_workflow(query)  # "development", "production", etc.
@@ -145,6 +149,7 @@ for agent in pipeline:
 ```
 
 ### **3. Agent Processing**
+
 ```python
 # 1. Agent initialization with dependency injection
 agent = container.get_agent(agent_type)
@@ -158,6 +163,7 @@ with probe(f"model.{model_name}.generate", trace_id):
 ```
 
 ### **4. Audit Trail Generation**
+
 ```python
 # 1. Trace snapshot creation
 snapshot = create_trace_snapshot(
@@ -176,18 +182,21 @@ save_performance_data(trace_id, perf_metrics)
 ## 🧩 **Component Details**
 
 ### **Orchestrator**
+
 - **Purpose**: Workflow management and agent coordination
 - **Key Features**: Pipeline execution, state management, error handling
 - **Observability**: Full trace propagation, performance monitoring
 - **Configuration**: Workflow definitions, early exit thresholds
 
 ### **Agent System**
+
 - **Base Protocol**: `AgentInterface` with lifecycle methods
 - **Specializations**: Planner (strategy), Coder (implementation), Critic (review)
 - **Features**: Confidence scoring, circuit breakers, async processing
 - **Context**: Agent-specific RAG context integration
 
 ### **Model Manager**
+
 - **Purpose**: Unified interface for language and embedding models
 - **Providers**: Local (llama.cpp), API (OpenAI), Embedding (sentence-transformers)
 - **Features**: Health monitoring, automatic fallback, performance tracking
@@ -198,18 +207,21 @@ save_performance_data(trace_id, perf_metrics)
 The models system provides a unified interface for language and embedding models with support for local and remote providers.
 
 ### Components
+
 - **ModelManager**: Central model lifecycle management ([manager.py](../src/synndicate/models/manager.py))
 - **Providers**: LocalLlamaProvider, LocalBGEProvider, OpenAIProvider ([providers.py](../src/synndicate/models/providers.py))
 - **Interfaces**: Abstract base classes for type safety ([interfaces.py](../src/synndicate/models/interfaces.py))
 - **Test Coverage**: 88% interfaces, 42% manager, 46% providers ([test_models_comprehensive.py](../tests/test_models_comprehensive.py))
 
 ### **RAG Engine**
+
 - **Retrieval**: Hybrid search (vector + keyword + semantic)
 - **Chunking**: Semantic, code-aware, and adaptive strategies
 - **Context**: Agent-specific formatting and priority selection
 - **Storage**: ChromaDB, FAISS, in-memory fallback
 
 ### **Observability Stack**
+
 - **Logging**: Structured JSON with trace IDs and timing
 - **Tracing**: End-to-end request tracking with contextvars
 - **Metrics**: Performance probes with Prometheus integration
@@ -218,6 +230,7 @@ The models system provides a unified interface for language and embedding models
 ## 🔧 **Configuration Architecture**
 
 ### **Layered Configuration**
+
 ```python
 # 1. Base configuration (settings.py)
 class Settings(BaseSettings):
@@ -236,6 +249,7 @@ config_hash = freeze_config_and_hash(settings)
 ```
 
 ### **Deterministic Startup**
+
 ```python
 # 1. Seed all RNGs
 seed = int(os.getenv("SYN_SEED", "1337"))
@@ -253,6 +267,7 @@ logger.info(f"CONFIG_SHA256 {config_hash}")
 ## 📊 **Data Flow Patterns**
 
 ### **Trace Propagation**
+
 ```python
 # Context variable-based trace propagation
 trace_id: ContextVar[str] = ContextVar('trace_id')
@@ -265,6 +280,7 @@ async def process_with_trace():
 ```
 
 ### **Performance Monitoring**
+
 ```python
 # Always-on performance probes
 @probe("orchestrator.process_query")
@@ -279,6 +295,7 @@ metrics = get_trace_metrics(trace_id)
 ```
 
 ### **Audit Trail Generation**
+
 ```python
 # Complete request lifecycle capture
 snapshot = {
@@ -295,18 +312,21 @@ snapshot = {
 ## 🚀 **Scalability Considerations**
 
 ### **Horizontal Scaling**
+
 - Stateless API servers with FastAPI
 - Shared artifact storage (S3, GCS)
 - Distributed tracing with OpenTelemetry
 - Load balancing with consistent trace routing
 
 ### **Performance Optimization**
+
 - Model caching and connection pooling
 - Async processing throughout the stack
 - Efficient RAG indexing and retrieval
 - Streaming responses for long operations
 
 ### **Resource Management**
+
 - Memory-efficient model loading
 - Configurable context windows
 - Circuit breakers for external services
@@ -315,12 +335,14 @@ snapshot = {
 ## 🔒 **Security Architecture**
 
 ### **Current Implementation**
+
 - Environment-based configuration
 - Structured logging without sensitive data
 - Configurable CORS and API security
 - Deterministic behavior for audit compliance
 
 ### **Planned Enhancements**
+
 - Rust-based code execution sandbox
 - Input validation and sanitization
 - Rate limiting and authentication
@@ -329,12 +351,14 @@ snapshot = {
 ## 📈 **Monitoring & Alerting**
 
 ### **Health Checks**
+
 - Component health monitoring
 - Model availability and performance
 - Storage and configuration validation
 - End-to-end request testing
 
 ### **Metrics & Alerts**
+
 - Request latency and throughput
 - Model inference performance
 - Error rates and failure patterns

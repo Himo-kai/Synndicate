@@ -241,23 +241,23 @@ def gauge(name: str, description: str = "", unit: str = "1") -> Any:
 
 class MetricsRegistry:
     """Registry for accessing metrics data in a format compatible with tests."""
-    
+
     def __init__(self, collector: MetricsCollector):
         self.collector = collector
-    
+
     def get_counter(self, name: str, default: int = 0) -> int:
         """Get counter value by name."""
         # Return mock values for testing - in production this would query actual metrics
         return default
-    
+
     def get_histogram_sum(self, name: str, default: float = 0.0) -> float:
         """Get histogram sum by name."""
         return default
-    
+
     def get_histogram_count(self, name: str, default: int = 0) -> int:
         """Get histogram count by name."""
         return default
-    
+
     def get_gauge(self, name: str, default: float = 0.0) -> float:
         """Get gauge value by name."""
         return default
@@ -364,9 +364,9 @@ class NoOpTimer:
         return None
 
 
-def counter(name: str):
+def noop_counter(name: str):
     return NoOpCounter()
 
 
-def timer(name: str):
+def noop_timer(name: str):
     return NoOpTimer()

@@ -14,8 +14,14 @@ from ..observability.logging import get_logger
 
 logger = get_logger(__name__)
 
-# Global config hash for audit trail
+# Global config hash for audit trail - RESET FOR FRESH START
 CONFIG_SHA256: str = ""
+
+
+def _reset_config_hash_for_tests():
+    """Reset config hash for test isolation."""
+    global CONFIG_SHA256
+    CONFIG_SHA256 = ""
 
 
 def seed_everything(seed: int | None = None) -> int:

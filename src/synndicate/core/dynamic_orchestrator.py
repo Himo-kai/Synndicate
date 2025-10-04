@@ -236,11 +236,17 @@ class DynamicOrchestrator:
         """Recruit agents for a specific task."""
         recruited_agents = []
 
-        logger.info(f"Recruiting agents for task {task_id}: {requirements.required_roles}")
+        logger.info(
+            f"Recruiting agents for task {task_id}: {[role.value for role in requirements.required_roles]}"
+        )
 
         # Deduplicate roles while preserving order
         seen: set[AgentRole] = set()
-        required_roles = [r for r in requirements.required_roles if not (r in seen or seen.add(r))]
+        required_roles = []
+        for r in requirements.required_roles:
+            if r not in seen:
+                seen.add(r)
+                required_roles.append(r)
 
         # First, try to assign existing agents
         for role in required_roles:
@@ -296,7 +302,7 @@ class DynamicOrchestrator:
         self.active_tasks[task_id] = requirements
 
         logger.info(
-            f"Recruited {len(recruited_agents)} agents for task {task_id}: {recruited_agents}"
+            f"Recruited {len(recruited_agents)} agents for task {str(task_id)}: {[str(agent) if hasattr(agent, '__str__') and not hasattr(agent, '_mock_name') else repr(agent) for agent in recruited_agents]}"
         )
         return recruited_agents
 
@@ -457,19 +463,14 @@ class DynamicOrchestrator:
 
     def _should_dismiss_agent(self, agent: ManagedAgent) -> bool:
         """Determine if an agent should be dismissed."""
-        # Dismiss if performance is too low
-        if agent.metrics.performance_score < self.performance_threshold:
-            return True
-
-        # Dismiss if agent has been idle for too long
-        if (
-            agent.status == AgentStatus.IDLE
-            and agent.metrics.last_used < time.time() - self.idle_timeout
-        ):
-            return True
-
-        # Keep agent by default
-        return False
+        # Dismiss if performance is too low or agent has been idle for too long
+        return (
+            agent.metrics.performance_score < self.performance_threshold
+            or (
+                agent.status == AgentStatus.IDLE
+                and agent.metrics.last_used < time.time() - self.idle_timeout
+            )
+        )
 
     def _dismiss_agent(self, agent_id: str) -> None:
         """Dismiss an agent from the system."""
@@ -484,7 +485,9 @@ class DynamicOrchestrator:
             # Remove from agents dict
             del self.agents[agent_id]
 
-            logger.info(f"Dismissed agent: {agent_id} ({agent.role.value})")
+            logger.info(
+                f"Dismissed agent: {str(agent_id)} ({str(agent.role.value) if hasattr(agent.role, 'value') else str(agent.role)})"
+            )
 
     async def _extract_plan_from_response(self, response: AgentResponse) -> Plan | None:
         """Extract plan from planner response."""

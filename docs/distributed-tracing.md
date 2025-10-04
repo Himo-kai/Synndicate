@@ -5,6 +5,7 @@ This guide covers setting up and using distributed tracing with Synndicate.
 ## 📊 System Integration Status
 
 ✅ **Distributed Tracing**: Fully integrated and production-ready
+
 - **Backend Support**: Jaeger, Zipkin, OTLP, Console ([distributed_tracing.py](../src/synndicate/observability/distributed_tracing.py))
 - **Configuration**: Environment variables and settings integration ([settings.py](../src/synndicate/config/settings.py))
 - **Docker Deployments**: Ready-to-use compose files ([config/tracing/](../config/tracing/))
@@ -27,27 +28,33 @@ Synndicate's distributed tracing backend provides:
 Choose your preferred tracing backend:
 
 #### Jaeger (Recommended)
+
 ```bash
 cd config/tracing
 docker-compose -f jaeger-docker-compose.yml up -d
 ```
-Access Jaeger UI at: http://localhost:16686
+
+Access Jaeger UI at: <http://localhost:16686>
 
 #### Zipkin
+
 ```bash
 cd config/tracing
 docker-compose -f zipkin-docker-compose.yml up -d
 ```
-Access Zipkin UI at: http://localhost:9411
+
+Access Zipkin UI at: <http://localhost:9411>
 
 #### Full Stack (Jaeger + Zipkin + OTLP Collector)
+
 ```bash
 cd config/tracing
 docker-compose up -d
 ```
-- Jaeger UI: http://localhost:16686
-- Zipkin UI: http://localhost:9411
-- OTLP Collector: http://localhost:4317 (gRPC), http://localhost:4318 (HTTP)
+
+- Jaeger UI: <http://localhost:16686>
+- Zipkin UI: <http://localhost:9411>
+- OTLP Collector: <http://localhost:4317> (gRPC), <http://localhost:4318> (HTTP)
 
 ### 2. Configure Synndicate
 
@@ -301,11 +308,11 @@ export SYN_OBSERVABILITY__TRACING_HEALTH_CHECK=false
 ### Common Issues
 
 #### 1. Connection Refused
-```
+
 ERROR: Failed to initialize distributed tracing: Connection refused
-```
 
 **Solution**: Ensure tracing backend is running and accessible:
+
 ```bash
 # Check if Jaeger is running
 curl http://localhost:16686/
@@ -320,11 +327,13 @@ docker ps | grep -E "(jaeger|zipkin|otel)"
 #### 2. No Traces Appearing
 
 **Possible causes**:
+
 - Sampling rate too low
 - Backend not receiving traces
 - Network connectivity issues
 
 **Debug steps**:
+
 ```bash
 # Enable console tracing for debugging
 export SYN_OBSERVABILITY__TRACING_BACKEND=console
@@ -340,6 +349,7 @@ docker logs synndicate-zipkin
 #### 3. High Memory Usage
 
 **Solution**: Tune batch settings:
+
 ```bash
 # Reduce queue sizes
 export SYN_OBSERVABILITY__TRACING_MAX_QUEUE_SIZE=512
@@ -367,9 +377,9 @@ manager.setup()
 
 Monitor tracing backend performance:
 
-1. **Jaeger Metrics**: Available at http://localhost:16686/metrics
-2. **Zipkin Metrics**: Available at http://localhost:9411/metrics
-3. **OTLP Collector Metrics**: Available at http://localhost:8888/metrics
+1. **Jaeger Metrics**: Available at <http://localhost:16686/metrics>
+2. **Zipkin Metrics**: Available at <http://localhost:9411/metrics>
+3. **OTLP Collector Metrics**: Available at <http://localhost:8888/metrics>
 
 ## Integration Examples
 

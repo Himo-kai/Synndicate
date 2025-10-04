@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Synndicate Vector Store CLI
-Copyright (c) 2025 Himo Kai. All Rights Reserved.
+Copyright (c) 2025 Himokai. All Rights Reserved.
 
 CLI tool for interacting with Synndicate vector store.
 

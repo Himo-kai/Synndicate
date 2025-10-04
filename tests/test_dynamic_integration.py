@@ -8,7 +8,6 @@ measuring performance and testing various scenarios.
 
 import asyncio
 import json
-
 # Add src to path for imports
 import sys
 import time
@@ -21,7 +20,9 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from synndicate.agents.coder import DynamicCoderAgent
 from synndicate.agents.dynamic_critic import DynamicCriticAgent
 from synndicate.agents.planner import PlannerAgent
-from synndicate.core.dynamic_orchestrator import AgentRole, DynamicOrchestrator, TaskRequirement
+from synndicate.core.dynamic_orchestrator import (AgentRole,
+                                                  DynamicOrchestrator,
+                                                  TaskRequirement)
 from synndicate.core.enhanced_orchestrator import EnhancedOrchestrator
 from synndicate.models.manager import ModelManager
 from synndicate.observability.logging import get_logger

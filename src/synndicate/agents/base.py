@@ -49,9 +49,9 @@ class ConfidenceLevel(Enum):
 class AgentResponse:
     """Enhanced agent response with detailed metadata."""
 
-    reasoning: str
     response: str
     confidence: float
+    reasoning: str = ""
     confidence_factors: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     execution_time: float | None = None

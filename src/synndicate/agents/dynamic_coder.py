@@ -46,16 +46,16 @@ class DynamicCoderAgent(Agent):
         self.specialization = specialization  # e.g., "python", "javascript", "rust"
 
     def system_prompt(self) -> str:
+        """Generate system prompt for the dynamic coder agent."""
         base_prompt = """You are an expert Coder Agent specialized in software implementation and development.
 
-Your responsibilities:
-1. Write clean, maintainable, and efficient code
-2. Follow established coding standards and best practices
-3. Implement features according to specifications
-4. Integrate seamlessly with existing codebases
-5. Add appropriate error handling and logging
-6. Write self-documenting code with clear variable names
-7. Consider performance and security implications
+Your responsibilities include:
+- Writing high-quality, efficient code
+- Following software engineering best practices
+- Implementing robust error handling
+- Creating comprehensive documentation
+- Optimizing for performance and maintainability
+- Producing clean, maintainable code
 
 Coding Standards:
 - Use clear, descriptive variable and function names
@@ -72,7 +72,7 @@ Always provide:
 - Testing considerations or example usage"""
 
         if self.specialization:
-            base_prompt += f"\n\nSpecialization: You are particularly expert in {self.specialization} development."
+            base_prompt += f"\n\nYou are specialized in {self.specialization} development and particularly expert in {self.specialization} programming."
 
         return base_prompt
 
@@ -162,6 +162,168 @@ Always provide:
 
         return factors
 
+    def extract_code_blocks(self, text: str) -> list[str]:
+        """Extract code blocks from markdown-formatted text."""
+        import re
+
+        # Match code blocks with triple backticks
+        pattern = r"```(?:\w+)?\n?(.*?)```"
+        matches = re.findall(pattern, text, re.DOTALL)
+
+        # Clean up the code blocks
+        code_blocks = []
+        for match in matches:
+            # Remove leading/trailing whitespace but preserve internal formatting
+            cleaned = match.strip()
+            if cleaned:
+                code_blocks.append(cleaned)
+
+        return code_blocks
+
+    def detect_language(self, code: str) -> str:
+        """Detect programming language from code content."""
+        import re
+
+        # Use scoring system to handle overlapping keywords
+        scores = {"java": 0, "python": 0, "javascript": 0, "c": 0, "cpp": 0, "go": 0, "rust": 0}
+
+        # Java indicators (check first to avoid conflicts)
+        if "public class" in code:
+            scores["java"] += 3
+        if "public static void main" in code:
+            scores["java"] += 3
+        if "System.out.print" in code:
+            scores["java"] += 2
+        if re.search(r"\bString\[\]\s+args\b", code):
+            scores["java"] += 2
+        if any(
+            keyword in code for keyword in ["private ", "protected ", "extends ", "implements "]
+        ):
+            scores["java"] += 1
+
+        # Python indicators
+        if re.search(r"\bdef\s+\w+\s*\(", code):
+            scores["python"] += 3
+        if re.search(r"\bprint\s*\(", code):
+            scores["python"] += 2
+        if any(keyword in code for keyword in ["import ", "from ", "__init__", "__name__"]):
+            scores["python"] += 1
+        if ":" in code and ";" not in code:  # Python uses : not ;
+            scores["python"] += 1
+
+        # JavaScript indicators
+        if "function " in code:
+            scores["javascript"] += 3
+        if "console.log" in code:
+            scores["javascript"] += 2
+        if any(keyword in code for keyword in ["const ", "let ", "var "]):
+            scores["javascript"] += 1
+        if "=>" in code:
+            scores["javascript"] += 1
+
+        # C indicators
+        if "#include" in code:
+            scores["c"] += 2
+        if "printf" in code:
+            scores["c"] += 2
+        if "int main" in code:
+            scores["c"] += 1
+
+        # C++ indicators
+        if "cout" in code or "cin" in code:
+            scores["cpp"] += 2
+        if "#include <iostream>" in code:
+            scores["cpp"] += 2
+        if "std::" in code:
+            scores["cpp"] += 1
+
+        # Go indicators
+        if "package " in code:
+            scores["go"] += 2
+        if "func " in code:
+            scores["go"] += 2
+        if 'import "' in code:
+            scores["go"] += 1
+
+        # Rust indicators
+        if "fn " in code:
+            scores["rust"] += 2
+        if "println!" in code:
+            scores["rust"] += 2
+        if "let mut" in code:
+            scores["rust"] += 1
+
+        # Return language with highest score
+        max_score = max(scores.values())
+        if max_score > 0:
+            return max(scores, key=scores.get)
+
+        return "unknown"
+
+    def validate_syntax(self, code: str, language: str) -> bool:
+        """Validate syntax for the given programming language."""
+        if language.lower() == "python":
+            try:
+                import ast
+
+                ast.parse(code)
+                return True
+            except SyntaxError:
+                return False
+        else:
+            # For non-Python languages, do basic validation
+            # Check for balanced braces/brackets/parentheses
+            stack = []
+            pairs = {"(": ")", "[": "]", "{": "}"}
+
+            for char in code:
+                if char in pairs:
+                    stack.append(char)
+                elif char in pairs.values():
+                    if not stack:
+                        return False
+                    if pairs[stack.pop()] != char:
+                        return False
+
+            return len(stack) == 0
+
+    def calculate_complexity_score(self, code: str) -> float:
+        """Calculate a complexity score for the given code."""
+        import re
+
+        if not code.strip():
+            return 0.0
+
+        lines = [line.strip() for line in code.split("\n") if line.strip()]
+        line_count = len(lines)
+
+        # Base complexity from line count
+        complexity = min(line_count / 10.0, 1.0)
+
+        # Add complexity for control structures
+        control_patterns = [
+            r"\b(if|elif|else)\b",
+            r"\b(for|while)\b",
+            r"\b(try|except|catch|finally)\b",
+            r"\b(switch|case)\b",
+            r"\b(function|def|class)\b",
+        ]
+
+        for pattern in control_patterns:
+            matches = len(re.findall(pattern, code, re.IGNORECASE))
+            complexity += matches * 0.1
+
+        # Add complexity for nesting (rough estimate)
+        max_indent = 0
+        for line in lines:
+            if line:
+                indent = len(line) - len(line.lstrip())
+                max_indent = max(max_indent, indent)
+
+        complexity += (max_indent // 4) * 0.05  # Assume 4-space indentation
+
+        return min(complexity, 1.0)
+
     async def process(self, query: str, context: dict[str, Any] | None = None) -> AgentResponse:
         """Process a coding request with enhanced context awareness."""
         # Enhance the query with coding-specific context
@@ -174,10 +336,33 @@ Always provide:
         if response.metadata is None:
             response.metadata = {}
 
+        # Extract code blocks and analyze them
+        code_blocks = self.extract_code_blocks(response.response)
+        languages_detected = (
+            [self.detect_language(block) for block in code_blocks] if code_blocks else []
+        )
+        syntax_valid = (
+            all(
+                self.validate_syntax(block, lang)
+                for block, lang in zip(code_blocks, languages_detected, strict=False)
+            )
+            if code_blocks
+            else True
+        )
+        complexity_score = (
+            max([self.calculate_complexity_score(block) for block in code_blocks])
+            if code_blocks
+            else 0.0
+        )
+
         response.metadata.update(
             {
                 "agent_type": "coder",
                 "specialization": self.specialization,
+                "code_blocks": code_blocks,
+                "languages_detected": languages_detected,
+                "syntax_valid": syntax_valid,
+                "complexity_score": complexity_score,
                 "code_analysis": self._analyze_code_response(response.response),
             }
         )

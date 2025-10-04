@@ -5,6 +5,7 @@ This guide helps you set up language and embedding models for Synndicate.
 ## 🎯 Test Coverage Status
 
 ✅ **Models System**: Production-ready with comprehensive test coverage
+
 - **Interfaces**: 88% coverage ([interfaces.py](../src/synndicate/models/interfaces.py))
 - **Manager**: 42% coverage ([manager.py](../src/synndicate/models/manager.py))
 - **Providers**: 46% coverage ([providers.py](../src/synndicate/models/providers.py))
@@ -38,6 +39,7 @@ wget https://huggingface.co/TheBloke/TinyLlama-1.1B-Chat-v1.0-GGUF/resolve/main/
 ### Option 2: Use OpenAI API (Easiest)
 
 Set environment variable:
+
 ```bash
 export OPENAI_API_KEY="your-api-key-here"
 ```
@@ -52,6 +54,7 @@ make -j$(nproc)
 ### Option 4: Use Existing Model Files
 
 If you have model files from your tarball, place them in:
+
 - `/home/himokai/models/language/` for GGUF files
 - Update the model paths in Synndicate configuration
 

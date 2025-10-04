@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Synndicate Vector Store Server
-Copyright (c) 2025 Himo Kai. All Rights Reserved.
+Copyright (c) 2025 Himokai. All Rights Reserved.
 
 Minimal HTTP vector store service for Synndicate RAG retriever.
 

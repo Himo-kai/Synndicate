@@ -18,9 +18,11 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from synndicate.config.container import Container
 from synndicate.core.orchestrator import Orchestrator
-from synndicate.models.interfaces import GenerationConfig, ModelConfig, ModelFormat, ModelType
+from synndicate.models.interfaces import (GenerationConfig, ModelConfig,
+                                          ModelFormat, ModelType)
 from synndicate.models.manager import ModelManager
-from synndicate.observability.logging import clear_trace_id, get_logger, set_trace_id, setup_logging
+from synndicate.observability.logging import (clear_trace_id, get_logger,
+                                              set_trace_id, setup_logging)
 from synndicate.observability.probe import get_trace_metrics, probe
 
 

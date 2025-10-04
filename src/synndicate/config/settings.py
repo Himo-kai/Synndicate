@@ -27,6 +27,7 @@ class ModelEndpoint(BaseModel):
     max_retries: int = Field(3, description="Maximum number of retries")
 
     @field_validator("base_url")
+    @classmethod
     def validate_base_url(cls, v: str) -> str:  # noqa: D401
         if v != "local" and not v.startswith(("http://", "https://")):
             raise ValueError("base_url must start with http:// or https://")
@@ -40,6 +41,8 @@ class AgentConfig(BaseModel):
     max_context_length: int = Field(4096, gt=0)
     temperature: float = Field(0.1, ge=0.0, le=2.0)
     enable_streaming: bool = Field(True)
+    max_retries: int = Field(3, ge=0)
+    timeout: float = Field(30.0, gt=0.0)
 
 
 class ModelsConfig(BaseModel):
@@ -117,13 +120,13 @@ class StorageConfig(BaseModel):
 
     backend: str = Field("local", description="Storage backend: 'local' or 's3'")
     local_path: Path = Field(Path("./artifacts"), description="Local storage directory")
-    
+
     # S3 configuration
     s3_bucket: str | None = Field(None, description="S3 bucket name")
     s3_prefix: str = Field("", description="S3 key prefix")
     s3_region: str = Field("us-east-1", description="AWS region")
     s3_endpoint_url: str | None = Field(None, description="Custom S3 endpoint (for MinIO, etc.)")
-    
+
     @field_validator("backend")
     @classmethod
     def validate_backend(cls, v: str) -> str:
@@ -145,55 +148,31 @@ class ObservabilityConfig(BaseModel):
     service_version: str = Field("2.0.0")
     metrics_port: int = Field(9090, gt=0, le=65535)
     enable_custom_metrics: bool = Field(True)
-    
+
     # Distributed tracing configuration
     tracing_backend: str = Field(
-        "jaeger", 
-        description="Tracing backend: jaeger, zipkin, otlp, console, disabled"
+        "jaeger", description="Tracing backend: jaeger, zipkin, otlp, console, disabled"
     )
-    tracing_protocol: str = Field(
-        "grpc", 
-        description="Tracing protocol: grpc, http"
-    )
+    tracing_protocol: str = Field("grpc", description="Tracing protocol: grpc, http")
     tracing_endpoint: str | None = Field(
-        None, 
-        description="Custom tracing endpoint (overrides backend defaults)"
+        None, description="Custom tracing endpoint (overrides backend defaults)"
     )
     tracing_sample_rate: float = Field(
-        1.0, 
-        ge=0.0, 
-        le=1.0, 
-        description="Trace sampling rate (0.0-1.0)"
+        1.0, ge=0.0, le=1.0, description="Trace sampling rate (0.0-1.0)"
     )
-    tracing_batch_timeout: int = Field(
-        5000, 
-        gt=0, 
-        description="Batch timeout in milliseconds"
-    )
-    tracing_max_batch_size: int = Field(
-        512, 
-        gt=0, 
-        description="Maximum batch size for span export"
-    )
+    tracing_batch_timeout: int = Field(5000, gt=0, description="Batch timeout in milliseconds")
+    tracing_max_batch_size: int = Field(512, gt=0, description="Maximum batch size for span export")
     tracing_max_queue_size: int = Field(
-        2048, 
-        gt=0, 
-        description="Maximum queue size for span processing"
+        2048, gt=0, description="Maximum queue size for span processing"
     )
-    tracing_health_check: bool = Field(
-        True, 
-        description="Enable tracing backend health checks"
-    )
+    tracing_health_check: bool = Field(True, description="Enable tracing backend health checks")
     tracing_health_check_interval: int = Field(
-        30, 
-        gt=0, 
-        description="Health check interval in seconds"
+        30, gt=0, description="Health check interval in seconds"
     )
-    
+
     # Legacy OTLP support (for backward compatibility)
     otlp_endpoint: str | None = Field(
-        None, 
-        description="Legacy OTLP endpoint (use tracing_endpoint instead)"
+        None, description="Legacy OTLP endpoint (use tracing_endpoint instead)"
     )
 
 
@@ -209,6 +188,7 @@ class APIConfig(BaseModel):
     enable_docs: bool = Field(True)
     docs_url: str = Field("/docs")
     redoc_url: str = Field("/redoc")
+    require_api_key: bool = Field(False)  # Disable auth for development
 
 
 class Settings(BaseSettings):
@@ -249,6 +229,7 @@ class Settings(BaseSettings):
             self.rag.vector_api_key = env_vector_key
 
     @field_validator("environment")
+    @classmethod
     def validate_environment(cls, v: str) -> str:  # noqa: D401
         allowed = {"development", "staging", "production"}
         if v not in allowed:

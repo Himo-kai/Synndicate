@@ -18,13 +18,9 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from synndicate.agents.factory import AgentFactory
 from synndicate.config.container import Container
 from synndicate.core.orchestrator import Orchestrator
-from synndicate.observability.logging import (
-    clear_trace_id,
-    get_logger,
-    get_trace_id,
-    set_trace_id,
-    setup_logging,
-)
+from synndicate.observability.logging import (clear_trace_id, get_logger,
+                                              get_trace_id, set_trace_id,
+                                              setup_logging)
 from synndicate.observability.probe import get_trace_metrics, probe
 
 

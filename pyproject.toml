@@ -104,6 +104,9 @@ ignore = ["E501", "B008"]
 [tool.mypy]
 python_version = "3.11"
 strict = false
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_return_any = true
 ignore_missing_imports = true
 disable_error_code = ["assignment", "arg-type", "attr-defined", "misc", "operator", "var-annotated", "call-arg", "return-value", "override", "index"]
 

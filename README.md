@@ -1,18 +1,20 @@
 # Synndicate
 
-🚀 **A Multi-Agent AI Orchestration System**
+**A Multi-Agent AI Orchestration System**
 
 An AI orchestration platform with comprehensive observability, deterministic behavior, and audit-ready architecture. Features local language model integration (TinyLlama), advanced RAG capabilities with distributed vector store, and full trace-based monitoring.
 
-## 🎯 **Key Features**
+## **Key Features**
 
-### **🤖 Multi-Agent Intelligence**
+### **Multi-Agent Intelligence**
+
 - **Planner Agent**: Strategic task decomposition and workflow planning
 - **Coder Agent**: Code generation and implementation with best practices
 - **Critic Agent**: Quality assurance, review, and improvement suggestions
 - **Agent Factory**: Dynamic agent creation with dependency injection
 
-### **🧠 Language Model Integration**
+### **Language Model Integration**
+
 - **Model Manager**: Comprehensive lifecycle management with health monitoring ([manager.py](src/synndicate/models/manager.py))
 - **Local Models**: TinyLlama 1.1B (638MB) with llama.cpp integration ([providers.py](src/synndicate/models/providers.py))
 - **Embedding Models**: BGE-small-en-v1.5 (384-dimensional embeddings) with SentenceTransformers
@@ -21,7 +23,8 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Test Coverage**: 88% interfaces, 42% manager, 46% providers with comprehensive test suite ([test_models_comprehensive.py](tests/test_models_comprehensive.py))
 - **Performance**: 9.4 words/sec average throughput with full observability
 
-### **📚 Advanced RAG System**
+### **Advanced RAG System**
+
 - **Hybrid Retrieval**: Vector, keyword, semantic, and hybrid search modes
 - **Distributed Vector Store**: HTTP API with authentication and persistence
 - **Smart Chunking**: Semantic, code-aware, and content-adaptive strategies
@@ -29,7 +32,8 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Multi-turn Context**: Conversation history preservation and expansion
 - **Embedding Cache**: Persistent caching for improved performance
 
-### **🔍 Enterprise Observability**
+### **Enterprise Observability**
+
 - **Distributed Tracing**: Full Jaeger, Zipkin, and OTLP backend support with Docker deployments ([tracing.py](src/synndicate/observability/tracing.py))
 - **Trace IDs**: End-to-end request tracking across all components and services ([logging.py](src/synndicate/observability/logging.py))
 - **Structured Logging**: Single-line JSON format with full context and trace correlation
@@ -38,7 +42,8 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Health Monitoring**: Backend health checks, automatic failover, and graceful shutdown
 - **Production Ready**: Configurable sampling, batching, and resource limits
 
-### **📊 Distributed Tracing Backend**
+### **Distributed Tracing Backend**
+
 - **Multi-Backend Support**: Jaeger, Zipkin, OTLP, Console, or Disabled modes ([distributed_tracing.py](src/synndicate/observability/distributed_tracing.py))
 - **Docker Integration**: Ready-to-use Docker Compose configurations ([config/tracing/](config/tracing/))
 - **Flexible Configuration**: Environment variables, settings files ([settings.py](src/synndicate/config/settings.py)), or programmatic setup
@@ -47,27 +52,32 @@ An AI orchestration platform with comprehensive observability, deterministic beh
 - **Production Deployment**: Kubernetes manifests and production hardening guides
 - **Comprehensive Documentation**: Complete setup and troubleshooting guide ([distributed-tracing.md](docs/distributed-tracing.md))
 
-### **⚙️ Production Infrastructure**
+### **Production Infrastructure**
+
 - **FastAPI Server**: RESTful API with `/health` and `/query` endpoints ([server.py](src/synndicate/api/server.py))
 - **Vector Store API**: Authenticated HTTP vector store with persistence ([vectorstore_server.py](scripts/vectorstore_server.py))
 - **Deterministic Behavior**: Seeded RNGs and config hashing for reproducibility ([audit.py](src/synndicate/core/audit.py))
 - **Configuration Management**: Pydantic-based settings with environment overrides ([settings.py](src/synndicate/config/settings.py))
 - **Artifact Storage**: Pluggable storage for traces, performance data, and audit bundles ([storage/](src/synndicate/storage/))
 
-## 🚀 **Quick Start**
+## **Quick Start**
 
 ### **System Requirements**
+
 **Supported Platforms:**
+
 - **Arch Linux** (primary development platform)
 - **Ubuntu/Debian** (CI/CD and production)
 - **macOS** (development)
 - **Windows** (via WSL2 recommended)
 
 **Optional Dependencies:**
+
 - **Docker** (for distributed tracing backends)
 - **Docker Compose** (for multi-service deployments)
 
 **Dependencies:**
+
 ```bash
 # Arch Linux
 sudo pacman -S python python-pip python-virtualenv git cmake
@@ -84,7 +94,8 @@ sudo apt update && sudo apt install python3 python3-pip python3-venv git cmake b
 
 ### **Installation**
 
-**1. Clone and Setup Environment**
+1. **Clone and Setup Environment**
+
 ```bash
 git clone https://github.com/Perihelionys/Synndicate.git
 cd Synndicate
@@ -96,12 +107,14 @@ source venv/bin/activate          # Linux/macOS
 venv\Scripts\activate            # Windows
 ```
 
-**2. Install Dependencies**
+2. **Install Dependencies**
+
 ```bash
 pip install -e .
 ```
 
-**3. Configure Environment (Optional)**
+3. **Configure Environment (Optional)**
+
 ```bash
 # Vector store configuration
 export SYN_RAG_VECTOR_API="http://localhost:8080"
@@ -122,6 +135,7 @@ export SYN_SEED="42"
 ### **Basic Usage**
 
 **Start Distributed Tracing Backend (Optional)**
+
 ```bash
 # Start Jaeger (recommended) - see config/tracing/jaeger-docker-compose.yml
 cd config/tracing
@@ -137,7 +151,8 @@ docker-compose up -d
 cd ../..
 ```
 
-**Start Vector Store (Optional - for distributed RAG)**
+*Start Vector Store** (Optional for distributed RAG)
+
 ```bash
 # Generate API key
 export SYN_VECTORSTORE_API_KEY="$(openssl rand -hex 32)"
@@ -148,6 +163,7 @@ uvicorn --app-dir scripts vectorstore_server:app --host 0.0.0.0 --port 8080
 ```
 
 **Run Synndicate**
+
 ```bash
 # Initialize with deterministic startup
 python -m synndicate.main
@@ -163,6 +179,7 @@ python -c "from synndicate.core.audit import generate_audit_bundle; generate_aud
 ```
 
 ### **API Usage**
+
 ```bash
 # Health check
 curl http://localhost:8000/health
@@ -174,6 +191,7 @@ curl -X POST http://localhost:8000/query \
 ```
 
 ### **Vector Store CLI**
+
 Use the [vector_cli.py](scripts/vector_cli.py) tool for document management:
 
 ```bash
@@ -190,9 +208,10 @@ python scripts/vector_cli.py query --text "programming tutorial" --limit 5
 python scripts/vector_cli.py delete --ids "doc1,doc2"
 ```
 
-## 🏗️ **Architecture Overview**
+## **Architecture Overview**
 
 ### **Core Components**
+
 - **Orchestrator**: Pipeline and state machine-based workflow management
 - **Agent System**: Protocol-based agents with lifecycle management
 - **Model Manager**: Unified interface for language and embedding models
@@ -201,6 +220,7 @@ python scripts/vector_cli.py delete --ids "doc1,doc2"
 - **Observability Stack**: Logging, tracing, metrics, and audit trails
 
 ### **Data Flow**
+
 ```
 API Request → Orchestrator → Agent Pipeline → Model Inference → RAG Context → Response
      ↓              ↓              ↓              ↓              ↓
@@ -210,14 +230,15 @@ Trace ID    Performance    Agent State    Model Metrics    Context Logs
 ```
 
 ### **Vector Store Architecture**
+
 ```
 RAG Retriever → HTTP Client → Vector Store API → In-Memory Index → Persistence Layer
       ↓              ↓              ↓              ↓              ↓
   Embedding     Auth Headers    CRUD Endpoints   Cosine Search   JSON Snapshots
 ```
 
-
 ### **Current Metrics**
+
 - **Language Model**: TinyLlama 1.1B at 9.4 words/sec average
 - **Embedding Model**: BGE-small-en-v1.5 with persistent caching
 - **Vector Store**: In-memory cosine similarity with JSON persistence
@@ -225,14 +246,16 @@ RAG Retriever → HTTP Client → Vector Store API → In-Memory Index → Persi
 - **CI/CD**: Automated testing on Ubuntu runners, cross-platform compatibility
 
 ### **Observability Features**
+
 - **Trace IDs**: UUID4-based request tracking
 - **Structured Logs**: JSON format with timestamp, level, component, trace_id
 - **Performance Probes**: Sub-millisecond timing for all operations
 - **Audit Bundles**: Complete system state snapshots with deterministic hashing
 
-## 🔧 **Development & Testing**
+## **Development & Testing**
 
 ### **Test Coverage**: 20% overall with major improvements in critical modules ([test coverage report](build/coverage/))
+
 - **Models System**: 88% interfaces, 42% manager, 46% providers ([test_models_comprehensive.py](tests/test_models_comprehensive.py))
 - **Main Entry**: 92% success rate with comprehensive lifecycle testing ([test_main_entry.py](tests/test_main_entry.py))
 - **State Machine**: 71% coverage with 100% test success rate ([test_state_machine_focused.py](tests/test_state_machine_focused.py))
@@ -241,9 +264,10 @@ RAG Retriever → HTTP Client → Vector Store API → In-Memory Index → Persi
 - **Code Quality**: Black, Ruff, MyPy with comprehensive pre-commit hooks ([pyproject.toml](pyproject.toml))
 - **Documentation**: Architecture guides, API docs, and troubleshooting resources ([docs/](docs/))
 
-## 🐳 **Docker & Deployment**
+## **Docker & Deployment**
 
 ### **Vector Store Container**
+
 Build using the [Dockerfile.vectorstore](Dockerfile.vectorstore):
 
 ```bash
@@ -260,6 +284,7 @@ docker run -d \
 ```
 
 ### **Docker Compose**
+
 Use the [docker-compose.vectorstore.yml](docker-compose.vectorstore.yml) configuration:
 
 ```bash
@@ -271,9 +296,10 @@ export SYN_RAG_VECTOR_API="http://localhost:8080"
 export SYN_RAG_VECTOR_API_KEY="your-secret"
 ```
 
-## 🧪 **Development & Testing**
+## **Development and Testing**
 
 ### **Development Setup**
+
 ```bash
 # Install development dependencies
 pip install -e ".[dev]"
@@ -288,6 +314,7 @@ mypy src/
 ```
 
 ### **Testing**
+
 Comprehensive test suites in [`tests/`](tests/):
 
 ```bash
@@ -306,28 +333,33 @@ pytest --cov=synndicate --cov-report=html
 ### **Platform-Specific Notes**
 
 **Arch Linux:**
+
 - Uses system Python (3.13+) with excellent package availability
 - cmake and build tools included in base-devel group
 - Recommended for development due to cutting-edge packages
 
 **Ubuntu/Debian:**
+
 - Stable LTS versions recommended for production
 - May need `python3-dev` for some native extensions
 - Used in CI/CD for consistency
 
 **macOS:**
+
 - Use Homebrew for dependencies
 - May need Xcode command line tools for cmake
 - M1/M2 Macs: ensure compatible Python builds
 
 **Windows:**
+
 - WSL2 with Ubuntu strongly recommended
 - Native Windows support via conda environments
 - PowerShell scripts available for setup
 
-## 🔧 **Configuration**
+## **Configuration**
 
 ### **Environment Variables**
+
 ```bash
 # Core system
 SYN_ENVIRONMENT=development|production
@@ -360,6 +392,7 @@ OPENAI_API_KEY=sk-...                         # OpenAI fallback
 ```
 
 ### **Configuration Files**
+
 - [`pyproject.toml`](pyproject.toml): Project metadata and dependencies
 - [`docker-compose.vectorstore.yml`](docker-compose.vectorstore.yml): Vector store deployment
 - [`config/deployment/`](config/deployment/): Deployment configurations (nginx.conf, docker-compose.yml)
@@ -368,7 +401,8 @@ OPENAI_API_KEY=sk-...                         # OpenAI fallback
 - [`.github/workflows/`](.github/workflows/): CI/CD pipelines for Ubuntu runners
 - [`scripts/`](scripts/): CLI tools and development utilities
 
-## 📁 **Project Structure**
+## **Project Structure**
+
 ```
 synndicate/
 ├── src/synndicate/          # Core application code
@@ -392,6 +426,7 @@ synndicate/
 ```
 
 ### **Development Workflow**
+
 1. Fork and clone the repository
 2. Create a feature branch
 3. Install development dependencies
@@ -400,44 +435,49 @@ synndicate/
 6. Submit pull request
 
 ### **Cross-Platform Testing**
+
 - **Local**: Test on your platform (Arch, Ubuntu, macOS, Windows)
 - **CI/CD**: Automated testing on Ubuntu runners
 - **Docker**: Container testing for deployment scenarios
 
 ### **Code Standards**
+
 - **Formatting**: Black with 100-character line length
 - **Linting**: Ruff with strict settings
 - **Type Checking**: MyPy with gradual typing
 - **Testing**: pytest with >80% coverage target
 
-## 📄 **License**
+## **License**
 
 Copyright 2025 Himokai. All Rights Reserved.
 
 This software is proprietary and confidential. See [LICENSE](LICENSE) file for full terms.
-For licensing inquiries, contact: himokai@proton.me
+For licensing inquiries, contact: <himokai@proton.me>
 
-## 📚 **Documentation**
+## **Documentation**
 
 ### **Comprehensive Guides**
+
 - **[Architecture Guide](docs/ARCHITECTURE.md)**: System design, component interactions, and data flow
 - **[Development Guide](docs/DEVELOPMENT.md)**: Setup, coding standards, testing, and contribution workflow
 - **[Model Setup Guide](docs/MODEL_SETUP.md)**: Language model configuration and deployment options
 - **[Distributed Tracing Guide](docs/distributed-tracing.md)**: Complete setup, configuration, and troubleshooting for Jaeger, Zipkin, and OTLP backends
 
 ### **API Documentation**
+
 - **Interactive API Docs**: `http://localhost:8000/docs` (when server is running)
 - **OpenAPI Spec**: Auto-generated from FastAPI endpoints
 - **Vector Store API**: RESTful endpoints for document management
 
 ### **Code Documentation**
+
 - **In-code Docstrings**: Comprehensive function and class documentation
 - **Type Hints**: Full type annotations throughout the codebase
 - **Configuration Schema**: Pydantic models with validation and documentation
 
-## 🆘 **Support**
+## **Support**
 
-- **Contact**: himokai@proton.me for inquiries
+- **Contact**: <himokai@proton.me> for inquiries
 - **Documentation**: Comprehensive guides and in-code documentation
 - **Platform Support**: All major Linux distributions, macOS, Windows (WSL2)
 - **Portfolio**: This project demonstrates professional AI system development

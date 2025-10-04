@@ -9,11 +9,14 @@ This agent specializes in:
 """
 
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..config.settings import AgentConfig, ModelEndpoint
 from ..observability.logging import get_logger
 from .base import Agent, AgentResponse
+
+if TYPE_CHECKING:
+    from .critic import ReviewIssue
 
 logger = get_logger(__name__)
 
@@ -32,7 +35,7 @@ class DynamicCriticAgent(Agent):
 
     def __init__(
         self,
-        focus_area: str | None = None,
+        review_focus: str | None = None,
         endpoint: ModelEndpoint | None = None,
         config: AgentConfig | None = None,
         http_client=None,
@@ -44,10 +47,10 @@ class DynamicCriticAgent(Agent):
         super().__init__(
             endpoint=endpoint, config=config, http_client=http_client, model_manager=model_manager
         )
-        self.focus_area = focus_area  # e.g., "security", "performance", "maintainability"
+        self.review_focus = review_focus  # e.g., "security", "performance", "maintainability"
 
     def system_prompt(self) -> str:
-        base_prompt = """You are an expert Critic Agent specialized in code review and quality assessment.
+        base_prompt = """You are an expert Code Review Agent specialized in comprehensive analysis and quality assessment.
 
 Your responsibilities:
 1. Analyze code for quality, maintainability, and best practices
@@ -75,8 +78,18 @@ Always provide:
 - Positive feedback for good practices
 - Overall quality assessment and score"""
 
-        if self.focus_area:
-            base_prompt += f"\n\nSpecial Focus: Pay particular attention to {self.focus_area} aspects of the code."
+        if self.review_focus:
+            focus_details = {
+                "security": "You are particularly focused on security aspects of code review, including identifying security vulnerabilities, authentication issues, data validation problems, and potential attack vectors.",
+                "performance": "You are particularly focused on performance aspects of code review, including identifying bottlenecks, inefficient algorithms, memory usage issues, and optimization opportunities.",
+                "maintainability": "You are particularly focused on maintainability aspects of code review, including code organization, readability, documentation quality, and long-term sustainability.",
+            }
+
+            focus_text = focus_details.get(
+                self.review_focus,
+                f"You are particularly focused on {self.review_focus} aspects of code review.",
+            )
+            base_prompt += f"\n\nSpecialization: {focus_text}"
 
         return base_prompt
 
@@ -154,6 +167,183 @@ Always provide:
 
         return factors
 
+    def extract_review_issues(self, review_text: str) -> list["ReviewIssue"]:
+        """Extract review issues from review text."""
+        from .critic import ReviewCategory, ReviewIssue, ReviewSeverity
+
+        issues = []
+
+        # Look for structured issue patterns with severity levels
+        # Pattern: - SEVERITY: Description
+        structured_pattern = r"^\s*-\s*(HIGH|MEDIUM|LOW|INFO|CRITICAL)\s*:\s*(.+)$"
+
+        lines = review_text.split("\n")
+        for i, line in enumerate(lines):
+            match = re.match(structured_pattern, line.strip(), re.IGNORECASE)
+            if match:
+                severity_text = match.group(1).upper()
+                description = match.group(2).strip()
+
+                # Map severity text to ReviewSeverity enum
+                severity_map = {
+                    "HIGH": ReviewSeverity.HIGH,
+                    "CRITICAL": ReviewSeverity.CRITICAL,
+                    "MEDIUM": ReviewSeverity.MEDIUM,
+                    "LOW": ReviewSeverity.LOW,
+                    "INFO": ReviewSeverity.INFO,
+                }
+
+                # Determine category based on keywords in description
+                category = ReviewCategory.MAINTAINABILITY  # default
+                description_lower = description.lower()
+                if any(
+                    word in description_lower
+                    for word in ["error", "bug", "issue", "problem", "missing", "validation"]
+                ):
+                    category = ReviewCategory.CORRECTNESS
+                elif any(
+                    word in description_lower for word in ["security", "vulnerability", "unsafe"]
+                ):
+                    category = ReviewCategory.SECURITY
+                elif any(
+                    word in description_lower for word in ["performance", "slow", "inefficient"]
+                ):
+                    category = ReviewCategory.PERFORMANCE
+                elif any(word in description_lower for word in ["style", "naming", "format"]):
+                    category = ReviewCategory.STYLE
+                elif any(word in description_lower for word in ["test", "testing", "coverage"]):
+                    category = ReviewCategory.TESTING
+                elif any(
+                    word in description_lower for word in ["complete", "missing", "docstring"]
+                ):
+                    category = ReviewCategory.COMPLETENESS
+
+                issues.append(
+                    ReviewIssue(
+                        category=category,
+                        severity=severity_map.get(severity_text, ReviewSeverity.MEDIUM),
+                        title=f"{severity_text}: {description[:50]}...",
+                        description=description,
+                        line_reference=str(i + 1),
+                    )
+                )
+
+        # Fallback: if no structured issues found, use generic patterns
+        if not issues:
+            issue_patterns = [
+                (r"\b(error|bug|issue|problem)\b", ReviewCategory.CORRECTNESS, ReviewSeverity.HIGH),
+                (
+                    r"\b(warning|concern|potential)\b",
+                    ReviewCategory.MAINTAINABILITY,
+                    ReviewSeverity.MEDIUM,
+                ),
+                (
+                    r"\b(improvement|suggestion|consider)\b",
+                    ReviewCategory.MAINTAINABILITY,
+                    ReviewSeverity.LOW,
+                ),
+                (
+                    r"\b(security|vulnerability|unsafe)\b",
+                    ReviewCategory.SECURITY,
+                    ReviewSeverity.HIGH,
+                ),
+                (
+                    r"\b(performance|slow|inefficient)\b",
+                    ReviewCategory.PERFORMANCE,
+                    ReviewSeverity.MEDIUM,
+                ),
+            ]
+
+            for i, line in enumerate(lines):
+                for pattern, category, severity in issue_patterns:
+                    if re.search(pattern, line, re.IGNORECASE):
+                        issues.append(
+                            ReviewIssue(
+                                category=category,
+                                severity=severity,
+                                title=line.strip()[:50] + "...",
+                                description=line.strip(),
+                                line_reference=str(i + 1),
+                            )
+                        )
+
+        return issues
+
+    def determine_recommendation(self, review_text: str, issues: list) -> str:
+        """Determine overall recommendation based on review and issues."""
+        if not issues:
+            return "APPROVE"
+
+        # Count critical/high severity issues
+        critical_count = 0
+        for issue in issues:
+            if hasattr(issue, "severity"):
+                # ReviewIssue object
+                if issue.severity.value in ["critical", "high"]:
+                    critical_count += 1
+            elif isinstance(issue, dict) and issue.get("severity") in ["critical", "high"]:
+                # Dictionary format (fallback)
+                critical_count += 1
+
+        if critical_count > 0:
+            return "REJECT"
+        elif len(issues) > 5:
+            return "NEEDS_WORK"
+        else:
+            return "APPROVE_WITH_SUGGESTIONS"
+
+    def calculate_overall_score(self, issues: list) -> float:
+        """Calculate overall quality score based on issues."""
+        if not issues:
+            return 1.0
+
+        # Start with perfect score
+        score = 1.0
+
+        # Deduct points based on issue severity
+        for issue in issues:
+            if hasattr(issue, "severity"):
+                # ReviewIssue object
+                severity = issue.severity.value
+            elif isinstance(issue, dict):
+                # Dictionary format (fallback)
+                severity = issue.get("severity", "medium")
+            else:
+                severity = "medium"  # default
+
+            if severity == "critical":
+                score -= 0.6  # Critical issues heavily penalize score
+            elif severity == "high":
+                score -= 0.3
+            elif severity == "medium":
+                score -= 0.1
+            else:
+                score -= 0.05
+
+        return max(0.0, score)
+
+    def extract_strengths(self, review_text: str) -> list[str]:
+        """Extract positive aspects from review text."""
+        import re
+
+        strengths = []
+
+        # Look for positive patterns
+        positive_patterns = [
+            r"\b(good|excellent|well|clean|clear|efficient)\b",
+            r"\b(follows|adheres|implements)\b.*\b(best practices|standards)\b",
+            r"\b(readable|maintainable|documented)\b",
+        ]
+
+        lines = review_text.split("\n")
+        for line in lines:
+            for pattern in positive_patterns:
+                if re.search(pattern, line, re.IGNORECASE):
+                    strengths.append(line.strip())
+                    break
+
+        return strengths
+
     async def process(self, query: str, context: dict[str, Any] | None = None) -> AgentResponse:
         """Process a code review request with enhanced analysis."""
         # Enhance the query with review-specific context
@@ -162,6 +352,12 @@ Always provide:
         # Process with the base agent
         response = await super().process(enhanced_query, context)
 
+        # Extract review issues and perform analysis
+        issues = self.extract_review_issues(response.response)
+        recommendation = self.determine_recommendation(response.response, issues)
+        overall_score = self.calculate_overall_score(issues)
+        strengths = self.extract_strengths(response.response)
+
         # Post-process to add review-specific metadata
         if response.metadata is None:
             response.metadata = {}
@@ -169,10 +365,33 @@ Always provide:
         response.metadata.update(
             {
                 "agent_type": "critic",
-                "focus_area": self.focus_area,
+                "focus_area": self.review_focus,
                 "review_analysis": self._analyze_review_response(response.response),
+                "review_result": {
+                    "issues": [
+                        {
+                            "category": issue.category.value,
+                            "severity": issue.severity.value,
+                            "title": issue.title,
+                            "description": issue.description,
+                        }
+                        for issue in issues
+                    ],
+                    "strengths": strengths,
+                    "recommendation": recommendation,
+                    "score": overall_score,
+                },
+                "issues_count": len(issues),
+                "recommendation": recommendation,
+                "overall_score": overall_score,
             }
         )
+
+        # Adjust confidence based on review thoroughness
+        # Only adjust if we have substantial review content (not just basic responses)
+        if len(issues) > 2 or len(strengths) > 2:
+            # More thorough review increases confidence
+            response.confidence = min(1.0, response.confidence + 0.1)
 
         return response
 
