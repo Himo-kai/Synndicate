@@ -14,29 +14,29 @@ Key Features:
 - Comprehensive error handling and retries
 """
 
+from .agents import (
+    CodeAgent,
+    MultiModalAgent,
+    TextAgent,
+    VisionAgent,
+)
 from .client import SynndicateClient
 from .exceptions import (
-    SynndicateError,
     AuthenticationError,
-    RateLimitError,
     ProcessingError,
+    RateLimitError,
+    SynndicateError,
     ValidationError,
 )
 from .models import (
     AgentResponse,
+    AnalyticsReport,
+    CodeContent,
+    ImageContent,
     MultiModalInput,
     MultiModalOutput,
     ProcessingTask,
-    AnalyticsReport,
     TextContent,
-    CodeContent,
-    ImageContent,
-)
-from .agents import (
-    TextAgent,
-    CodeAgent,
-    MultiModalAgent,
-    VisionAgent,
 )
 
 __version__ = "1.0.0"
@@ -46,27 +46,27 @@ __email__ = "support@synndicate.ai"
 __all__ = [
     # Core client
     "SynndicateClient",
-    
+
     # Exceptions
     "SynndicateError",
-    "AuthenticationError", 
+    "AuthenticationError",
     "RateLimitError",
     "ProcessingError",
     "ValidationError",
-    
+
     # Data models
     "AgentResponse",
     "MultiModalInput",
-    "MultiModalOutput", 
+    "MultiModalOutput",
     "ProcessingTask",
     "AnalyticsReport",
     "TextContent",
     "CodeContent",
     "ImageContent",
-    
+
     # Agent interfaces
     "TextAgent",
-    "CodeAgent", 
+    "CodeAgent",
     "MultiModalAgent",
     "VisionAgent",
 ]

@@ -14,8 +14,9 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any
+from typing import Any, Dict, List, Optional, Protocol, Union
 
+from opentelemetry import metrics
 from opentelemetry.metrics import Counter as OTelCounter
 from opentelemetry.metrics import Histogram, Meter
 
@@ -224,14 +225,24 @@ def get_metrics_collector() -> MetricsCollector:
 
 
 # Convenience functions
-def counter(name: str, description: str = "", unit: str = "1") -> OTelCounter:
-    """Get or create a counter metric."""
-    return get_metrics_collector().counter(name, description, unit)
+def counter(name: str, description: str = "", unit: str = "1"):
+    """Get or create a counter metric with inc() method compatibility."""
+    try:
+        otel_counter = get_metrics_collector().counter(name, description, unit)
+        return CounterWrapper(otel_counter)
+    except Exception:
+        # Fallback to no-op counter if metrics system not initialized
+        return NoOpCounter()
 
 
-def histogram(name: str, description: str = "", unit: str = "1") -> Histogram:
-    """Get or create a histogram metric."""
-    return get_metrics_collector().histogram(name, description, unit)
+def histogram(name: str, description: str = "", unit: str = "1"):
+    """Get or create a histogram metric with observe() method compatibility."""
+    try:
+        otel_histogram = get_metrics_collector().histogram(name, description, unit)
+        return HistogramWrapper(otel_histogram)
+    except Exception:
+        # Fallback to no-op timer if metrics system not initialized
+        return NoOpTimer()
 
 
 def gauge(name: str, description: str = "", unit: str = "1") -> Any:
@@ -351,6 +362,60 @@ def track_agent_performance(agent_type: str):
 class NoOpCounter:
     def inc(self, *args, **kwargs):
         return None
+
+    def add(self, value: int = 1, attributes=None):
+        return None
+
+
+class CounterWrapper:
+    """Wrapper to make OpenTelemetry counters compatible with inc() method."""
+
+    def __init__(self, otel_counter):
+        self._counter = otel_counter
+
+    def inc(self, value: int = 1, **kwargs):
+        """Increment counter (compatible with Prometheus-style interface)."""
+        self._counter.add(value)
+
+    def add(self, value: int = 1, attributes=None):
+        """Add to counter (OpenTelemetry-style interface)."""
+        self._counter.add(value, attributes)
+
+
+class HistogramWrapper:
+    """Wrapper to provide Prometheus-style observe() method for OpenTelemetry histograms."""
+
+    def __init__(self, histogram):
+        self._histogram = histogram
+
+    def observe(self, value: float, labels: Optional[Dict[str, str]] = None) -> None:
+        """Record a histogram observation."""
+        if self._histogram and hasattr(self._histogram, 'record'):
+            attributes = labels or {}
+            self._histogram.record(value, attributes)
+
+    def time(self):
+        """Return a context manager for timing operations."""
+        return HistogramTimer(self)
+
+
+class HistogramTimer:
+    """Context manager for timing histogram observations."""
+
+    def __init__(self, histogram_wrapper):
+        self._histogram = histogram_wrapper
+        self._start_time = None
+
+    def __enter__(self):
+        import time
+        self._start_time = time.time()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._start_time is not None:
+            import time
+            duration = time.time() - self._start_time
+            self._histogram.observe(duration)
 
 
 class NoOpTimer:

@@ -9,17 +9,21 @@ import sys
 import uuid
 
 # Add src to path
-sys.path.insert(0, "src")
-
+# Use editable install: pip install -e .
 from synndicate.config.settings import get_settings
-from synndicate.observability.logging import (clear_trace_id, get_logger,
-                                              get_trace_id, set_trace_id,
-                                              setup_logging)
-from synndicate.observability.probe import (clear_trace_metrics,
-                                            get_trace_metrics, probe)
-from synndicate.storage.artifacts import (get_artifact_store,
-                                          save_performance_data,
-                                          save_trace_snapshot)
+from synndicate.observability.logging import (
+    clear_trace_id,
+    get_logger,
+    get_trace_id,
+    set_trace_id,
+    setup_logging,
+)
+from synndicate.observability.probe import clear_trace_metrics, get_trace_metrics, probe
+from synndicate.storage.artifacts import (
+    get_artifact_store,
+    save_performance_data,
+    save_trace_snapshot,
+)
 
 
 async def test_structured_logging():
@@ -154,7 +158,7 @@ async def test_artifact_storage():
     trace_id = str(uuid.uuid4())[:8]
 
     # Test text storage
-    text_ref = store.save_text("test/sample.txt", "Hello, World!")
+    store.save_text("test/sample.txt", "Hello, World!")
     assert store.exists("test/sample.txt"), "Text file should exist"
 
     content = store.read_text("test/sample.txt")
@@ -162,7 +166,7 @@ async def test_artifact_storage():
 
     # Test JSON storage
     test_data = {"trace_id": trace_id, "test": True, "value": 42}
-    json_ref = store.save_json("test/sample.json", test_data)
+    store.save_json("test/sample.json", test_data)
 
     loaded_data = store.read_json("test/sample.json")
     assert loaded_data == test_data, f"JSON data mismatch: {loaded_data}"

@@ -21,8 +21,7 @@ from synndicate.config.container import Container
 from synndicate.core.orchestrator import Orchestrator
 from synndicate.models.interfaces import GenerationConfig
 from synndicate.models.manager import ModelManager
-from synndicate.observability.logging import (clear_trace_id, get_logger,
-                                              set_trace_id, setup_logging)
+from synndicate.observability.logging import clear_trace_id, get_logger, set_trace_id, setup_logging
 from synndicate.observability.probe import get_trace_metrics, probe
 
 
@@ -32,7 +31,7 @@ async def test_model_manager_observability():
 
     # Setup
     setup_logging()
-    logger = get_logger(__name__)
+    get_logger(__name__)
 
     # Create model manager
     model_manager = ModelManager()
@@ -140,7 +139,7 @@ async def test_model_fallback_behavior():
     print("\n🔄 Testing Model Fallback Behavior...")
 
     # Setup
-    container = Container()
+    Container()
     model_manager = ModelManager()
 
     fallback_trace_id = "model_fallback_test_789"
@@ -152,7 +151,7 @@ async def test_model_fallback_behavior():
         # Test with non-existent model (should trigger fallback)
         with probe("test.model_fallback", fallback_trace_id):
             try:
-                response = await model_manager.generate_text(
+                await model_manager.generate_text(
                     "Test fallback behavior", model_name="non_existent_model"
                 )
                 print("  ⚠️  Unexpected success with non-existent model")

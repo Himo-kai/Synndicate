@@ -6,8 +6,7 @@ Tests the core StateMachine, State, Transition, and StateContext classes.
 
 import pytest
 
-from synndicate.core.state_machine import (State, StateContext, StateMachine,
-                                           StateType, Transition)
+from synndicate.core.state_machine import State, StateContext, StateMachine, StateType, Transition
 
 
 class MockState(State):
@@ -346,7 +345,7 @@ class TestStateMachine:
         # Try invalid transition to non-existent state (should raise ValueError)
         try:
             await sm.transition_to("next", "invalid_event")
-            assert False, "Expected ValueError for non-existent state"
+            raise AssertionError("Expected ValueError for non-existent state")
         except ValueError as e:
             assert "not found" in str(e)
 

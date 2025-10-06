@@ -19,10 +19,18 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException, Request, status
 
-from synndicate.api.auth import (APIKey, AuthManager, RateLimitConfig,
-                                 RateLimiter, RateLimitTier, SecurityConfig,
-                                 UserRole, add_rate_limit_headers,
-                                 get_auth_manager, require_auth)
+from synndicate.api.auth import (
+    APIKey,
+    AuthManager,
+    RateLimitConfig,
+    RateLimiter,
+    RateLimitTier,
+    SecurityConfig,
+    UserRole,
+    add_rate_limit_headers,
+    get_auth_manager,
+    require_auth,
+)
 
 
 class TestUserRoleAndTiers:

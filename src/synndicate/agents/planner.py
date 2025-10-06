@@ -237,7 +237,7 @@ Always structure your response with clear sections and be specific about require
 
     async def process(self, query: str, context: dict | None = None) -> AgentResponse:
         """Process planning request with enhanced structure extraction."""
-        response = await super().process(query, context)
+        response: AgentResponse = await super().process(query, context)
 
         # Extract structured plan
         plan = self.extract_plan_structure(response.response)

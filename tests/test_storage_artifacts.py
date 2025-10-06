@@ -10,13 +10,18 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from synndicate.storage.artifacts import (ArtifactRef, LocalStore, S3Store,
-                                          get_artifact_store, save_audit_data,
-                                          save_coverage_report,
-                                          save_dependency_snapshot,
-                                          save_lint_report,
-                                          save_performance_data,
-                                          save_trace_snapshot)
+from synndicate.storage.artifacts import (
+    ArtifactRef,
+    LocalStore,
+    S3Store,
+    get_artifact_store,
+    save_audit_data,
+    save_coverage_report,
+    save_dependency_snapshot,
+    save_lint_report,
+    save_performance_data,
+    save_trace_snapshot,
+)
 
 
 class TestArtifactRef:
@@ -248,9 +253,11 @@ class TestS3Store:
 
     def test_s3_store_initialization_no_boto3(self):
         """Test S3Store initialization when boto3 is not available."""
-        with patch.dict("sys.modules", {"boto3": None}):
-            with pytest.raises(ImportError, match="boto3 is required"):
-                S3Store("test-bucket")
+        with (
+            patch.dict("sys.modules", {"boto3": None}),
+            pytest.raises(ImportError, match="boto3 is required"),
+        ):
+            S3Store("test-bucket")
 
     @patch("boto3.client")
     def test_s3_store_initialization_no_credentials(self, mock_boto3_client):
@@ -449,7 +456,7 @@ class TestS3Store:
         assert artifacts == expected
 
         # List with additional prefix
-        artifacts_filtered = store.list_artifacts("subdir/")
+        store.list_artifacts("subdir/")
         mock_client.list_objects_v2.assert_called_with(
             Bucket="test-bucket", Prefix="prefix/subdir/"
         )
@@ -480,14 +487,16 @@ class TestGlobalArtifactStore:
 
     def test_get_artifact_store_default(self):
         """Test getting default artifact store."""
-        with patch("synndicate.storage.artifacts._artifact_store", None):
-            with patch("synndicate.storage.artifacts.LocalStore") as mock_local:
-                mock_instance = MagicMock()
-                mock_local.return_value = mock_instance
+        with (
+            patch("synndicate.storage.artifacts._artifact_store", None),
+            patch("synndicate.storage.artifacts.LocalStore") as mock_local,
+        ):
+            mock_instance = MagicMock()
+            mock_local.return_value = mock_instance
 
-                store = get_artifact_store()
-                assert store == mock_instance
-                mock_local.assert_called_once()
+            store = get_artifact_store()
+            assert store == mock_instance
+            mock_local.assert_called_once()
 
     def test_get_artifact_store_cached(self):
         """Test getting cached artifact store."""

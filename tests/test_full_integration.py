@@ -9,16 +9,14 @@ import os
 import sys
 
 # Add src to path
-sys.path.insert(0, "src")
-
+# Use editable install: pip install -e .
 from synndicate.agents.coder import CoderAgent
 from synndicate.agents.critic import CriticAgent
 from synndicate.agents.planner import PlannerAgent
 from synndicate.models.interfaces import ModelConfig, ModelFormat, ModelType
 from synndicate.models.manager import ModelManager
 from synndicate.rag.chunking import SemanticChunker
-from synndicate.rag.context import (ContextBuilder, ContextIntegrator,
-                                    ContextStrategy)
+from synndicate.rag.context import ContextBuilder, ContextIntegrator, ContextStrategy
 from synndicate.rag.indexer import DocumentIndexer
 from synndicate.rag.retriever import QueryContext, RAGRetriever, SearchMode
 
@@ -126,7 +124,7 @@ async def test_rag_pipeline():
             results, max_tokens=500, strategy=ContextStrategy.CONCATENATE
         )
 
-        agent_context = context_integrator.format_for_agent(
+        context_integrator.format_for_agent(
             context, agent_type="planner", query=query
         )
 
@@ -162,13 +160,13 @@ async def test_agent_integration():
 
         # Test agent creation (without full language model for now)
         try:
-            planner = PlannerAgent(model_manager=manager, embedding_model_name="bge-small-en-v1.5")
+            PlannerAgent(model_manager=manager, embedding_model_name="bge-small-en-v1.5")
             print("  ✅ Created planner agent")
 
-            coder = CoderAgent(model_manager=manager, embedding_model_name="bge-small-en-v1.5")
+            CoderAgent(model_manager=manager, embedding_model_name="bge-small-en-v1.5")
             print("  ✅ Created coder agent")
 
-            critic = CriticAgent(model_manager=manager, embedding_model_name="bge-small-en-v1.5")
+            CriticAgent(model_manager=manager, embedding_model_name="bge-small-en-v1.5")
             print("  ✅ Created critic agent")
 
         except Exception as e:

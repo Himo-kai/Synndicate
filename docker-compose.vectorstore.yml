@@ -26,8 +26,6 @@
 #   - Persistence data stored in ./data/vectorstore.json
 #   - API key should be generated securely for production
 
-version: '3.8'
-
 services:
   vectorstore:
     build:
@@ -35,16 +33,16 @@ services:
       dockerfile: Dockerfile.vectorstore
     ports:
       - "8080:8080"
+    env_file:
+      - .env  # Copy from .env.example and set your own values
     environment:
-      # Authentication (set your own secret key)
-      - SYN_VECTORSTORE_API_KEY=${SYN_VECTORSTORE_API_KEY:-demo-key-change-in-production}
       # Persistence path inside container
       - SYN_VECTORSTORE_PERSIST_PATH=/data/vectorstore.json
     volumes:
       # Mount local data directory for persistence
       - ./data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/health')"]
       interval: 30s
       timeout: 10s
       retries: 3

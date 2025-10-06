@@ -213,7 +213,7 @@ class S3Store(ArtifactStore):
 
         except ImportError:
             log.error("boto3 not installed. Install with: pip install boto3")
-            raise ImportError("boto3 is required for S3 storage. Install with: pip install boto3")
+            raise ImportError("boto3 is required for S3 storage. Install with: pip install boto3") from None
         except NoCredentialsError:
             log.error("AWS credentials not found. Configure with AWS CLI or environment variables")
             raise
@@ -344,13 +344,13 @@ class S3Store(ArtifactStore):
 
         try:
             response = self.s3_client.get_object(Bucket=self.bucket, Key=key)
-            content = response["Body"].read().decode("utf-8")
+            content: str = response["Body"].read().decode("utf-8")
             log.debug("Read text artifact from S3", key=key, size=len(content))
             return content
         except self.ClientError as e:
             if e.response["Error"]["Code"] == "NoSuchKey":
                 log.warning("Text artifact not found in S3", key=key)
-                raise FileNotFoundError(f"Artifact not found: {relpath}")
+                raise FileNotFoundError(f"Artifact not found: {relpath}") from e
             log.error("Failed to read text from S3", key=key, error=str(e))
             raise
 

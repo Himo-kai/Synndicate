@@ -17,13 +17,18 @@ import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from synndicate.storage.artifacts import (ArtifactRef, LocalStore, S3Store,
-                                          get_artifact_store, save_audit_data,
-                                          save_coverage_report,
-                                          save_dependency_snapshot,
-                                          save_lint_report,
-                                          save_performance_data,
-                                          save_trace_snapshot)
+from synndicate.storage.artifacts import (
+    ArtifactRef,
+    LocalStore,
+    S3Store,
+    get_artifact_store,
+    save_audit_data,
+    save_coverage_report,
+    save_dependency_snapshot,
+    save_lint_report,
+    save_performance_data,
+    save_trace_snapshot,
+)
 
 
 class TestArtifactRef(unittest.TestCase):
@@ -83,7 +88,7 @@ class TestLocalStore(unittest.TestCase):
         new_temp_dir = Path(self.temp_dir) / "new_subdir"
         self.assertFalse(new_temp_dir.exists())
 
-        store = LocalStore(new_temp_dir)
+        LocalStore(new_temp_dir)
         self.assertTrue(new_temp_dir.exists())
         self.assertTrue(new_temp_dir.is_dir())
 
@@ -223,8 +228,11 @@ class TestS3Store(unittest.TestCase):
         """Set up S3Store with mocked boto3."""
         try:
             # Try to import boto3 to see if it's available
-            import boto3
-            from botocore.exceptions import ClientError, NoCredentialsError
+            import importlib.util
+            if importlib.util.find_spec("boto3") is None:
+                raise ImportError("boto3 not available")
+            if importlib.util.find_spec("botocore") is None:
+                raise ImportError("botocore not available")
 
             # Mock boto3 and S3 client
             self.mock_boto3 = MagicMock()
@@ -290,10 +298,12 @@ class TestS3Store(unittest.TestCase):
         mock_boto3_no_creds = MagicMock()
         mock_boto3_no_creds.client.side_effect = NoCredentialsError()
 
-        with patch("synndicate.storage.artifacts.boto3", mock_boto3_no_creds):
-            with patch("synndicate.storage.artifacts.NoCredentialsError", NoCredentialsError):
-                with self.assertRaises(NoCredentialsError):
-                    S3Store(bucket="test-bucket")
+        with (
+            patch("synndicate.storage.artifacts.boto3", mock_boto3_no_creds),
+            patch("synndicate.storage.artifacts.NoCredentialsError", NoCredentialsError),
+            self.assertRaises(NoCredentialsError),
+        ):
+            S3Store(bucket="test-bucket")
 
     def test_s3_store_key_generation(self):
         """Test S3 key generation with prefix."""
@@ -399,11 +409,11 @@ class TestS3Store(unittest.TestCase):
     def test_exists_s3_not_found(self):
         """Test checking existence of non-existent S3 object."""
         # Use the ClientError stored in the S3Store instance
-        ClientError = self.store.ClientError
+        client_error_class = self.store.ClientError
 
         # Mock ClientError for 404
         error_response = {"Error": {"Code": "404", "Message": "Not Found"}}
-        self.mock_s3_client.head_object.side_effect = ClientError(error_response, "HeadObject")
+        self.mock_s3_client.head_object.side_effect = client_error_class(error_response, "HeadObject")
 
         exists = self.store.exists("nonexistent.txt")
         self.assertFalse(exists)
@@ -447,20 +457,20 @@ class TestS3Store(unittest.TestCase):
     def test_s3_error_handling(self):
         """Test S3 error handling for various operations."""
         # Use the ClientError stored in the S3Store instance
-        ClientError = self.store.ClientError
+        client_error_class = self.store.ClientError
 
         # Mock ClientError for various operations
         error_response = {"Error": {"Code": "500", "Message": "Internal Error"}}
-        client_error = ClientError(error_response, "Operation")
+        client_error = client_error_class(error_response, "Operation")
 
         # Test save_text error
         self.mock_s3_client.put_object.side_effect = client_error
-        with self.assertRaises(ClientError):
+        with self.assertRaises(client_error_class):
             self.store.save_text("test.txt", "content")
 
         # Test read_text error
         self.mock_s3_client.get_object.side_effect = client_error
-        with self.assertRaises(ClientError):
+        with self.assertRaises(client_error_class):
             self.store.read_text("test.txt")
 
 

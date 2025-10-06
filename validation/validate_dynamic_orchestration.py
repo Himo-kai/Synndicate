@@ -15,7 +15,7 @@ from pathlib import Path
 
 # Add src to Python path
 project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root / "src"))
+# Use editable install: pip install -e .
 
 # Set environment variables
 os.environ["SYN_SEED"] = "1337"

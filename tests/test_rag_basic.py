@@ -28,10 +28,10 @@ def hello_world():
 
 class TestClass:
     """A test class."""
-    
+
     def __init__(self):
         self.value = 42
-    
+
     def get_value(self):
         return self.value
 '''
@@ -230,7 +230,7 @@ def calculate_fibonacci(n):
     """Calculate fibonacci number using iteration."""
     if n <= 1:
         return n
-    
+
     a, b = 0, 1
     for _ in range(2, n + 1):
         a, b = b, a + b

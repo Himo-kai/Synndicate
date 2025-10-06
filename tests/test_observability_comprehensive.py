@@ -18,13 +18,22 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from synndicate.observability.distributed_tracing import (
-    DistributedTracingConfig, DistributedTracingManager, TracingBackend)
-from synndicate.observability.tracing import (TracingManager,
-                                              add_span_attributes,
-                                              add_span_event, get_trace_id,
-                                              get_tracer, get_tracing_manager,
-                                              set_span_error, setup_tracing,
-                                              trace_context, trace_span)
+    DistributedTracingConfig,
+    DistributedTracingManager,
+    TracingBackend,
+)
+from synndicate.observability.tracing import (
+    TracingManager,
+    add_span_attributes,
+    add_span_event,
+    get_trace_id,
+    get_tracer,
+    get_tracing_manager,
+    set_span_error,
+    setup_tracing,
+    trace_context,
+    trace_span,
+)
 
 
 class TestTracingManagerInitialization(unittest.TestCase):
@@ -63,7 +72,7 @@ class TestTracingManagerInitialization(unittest.TestCase):
             patch("synndicate.observability.tracing.Resource") as mock_resource,
             patch("synndicate.observability.tracing.TracerProvider") as mock_tracer_provider,
             patch("synndicate.observability.tracing.trace") as mock_trace,
-            patch("synndicate.observability.tracing.RequestsInstrumentor") as mock_instrumentor,
+            patch("synndicate.observability.tracing.RequestsInstrumentor"),
         ):
 
             mock_tracer_instance = MagicMock()
@@ -122,7 +131,7 @@ class TestTracingManagerInitialization(unittest.TestCase):
         self.assertIsNotNone(manager)  # Should always return a manager (even NoOpTracer)
 
         # Test setup_tracing with mock tracer
-        with patch("synndicate.observability.tracing._tracing_manager") as mock_global_manager:
+        with patch("synndicate.observability.tracing._tracing_manager"):
             mock_tracer = MagicMock()
             setup_tracing(mock_tracer)
             # Verify setup was called

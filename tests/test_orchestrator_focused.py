@@ -12,10 +12,16 @@ import pytest
 from synndicate.agents.base import AgentResponse
 from synndicate.agents.factory import AgentFactory
 from synndicate.config.container import Container
-from synndicate.core.orchestrator import (CodingState, CompletionState,
-                                          ErrorState, Orchestrator,
-                                          OrchestratorResult, PlanningState,
-                                          ReviewState, RevisionState)
+from synndicate.core.orchestrator import (
+    CodingState,
+    CompletionState,
+    ErrorState,
+    Orchestrator,
+    OrchestratorResult,
+    PlanningState,
+    ReviewState,
+    RevisionState,
+)
 from synndicate.core.state_machine import StateType
 
 
@@ -463,7 +469,7 @@ class TestErrorHandling:
         context = {}
 
         # Mock state machine failure
-        with patch.object(orchestrator.state_machine, "start") as mock_start:
+        with patch.object(orchestrator.state_machine, "start"):
             with patch.object(orchestrator.state_machine, "run_to_completion") as mock_run:
                 mock_run.side_effect = Exception("State machine failed")
 

@@ -10,10 +10,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import numpy as np
 import pytest
 
-from synndicate.models.interfaces import (EmbeddingModel, GenerationConfig,
-                                          LanguageModel, ModelConfig,
-                                          ModelFormat, ModelResponse,
-                                          ModelType)
+from synndicate.models.interfaces import (
+    EmbeddingModel,
+    GenerationConfig,
+    LanguageModel,
+    ModelConfig,
+    ModelFormat,
+    ModelResponse,
+    ModelType,
+)
 from synndicate.models.manager import ModelManager
 from synndicate.models.providers import LocalModelProvider, OpenAIProvider
 

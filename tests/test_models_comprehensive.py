@@ -18,13 +18,22 @@ import numpy as np
 import pytest
 
 # Import the models system
-from synndicate.models.interfaces import (EmbeddingModel, GenerationConfig,
-                                          LanguageModel, ModelConfig,
-                                          ModelFormat, ModelResponse,
-                                          ModelType)
+from synndicate.models.interfaces import (
+    EmbeddingModel,
+    GenerationConfig,
+    LanguageModel,
+    ModelConfig,
+    ModelFormat,
+    ModelResponse,
+    ModelType,
+)
 from synndicate.models.manager import ModelManager
-from synndicate.models.providers import (LocalBGEProvider, LocalLlamaProvider,
-                                         LocalModelProvider, OpenAIProvider)
+from synndicate.models.providers import (
+    LocalBGEProvider,
+    LocalLlamaProvider,
+    LocalModelProvider,
+    OpenAIProvider,
+)
 
 
 class TestModelInterfaces:

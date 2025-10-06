@@ -155,7 +155,7 @@ async def test_rag_integration(manager):
 
         # Test embedding generation for RAG
         texts = [chunk.content for chunk in test_chunks]
-        embeddings = await manager.generate_embeddings(texts)
+        await manager.generate_embeddings(texts)
 
         print("  ✅ Generated embeddings for RAG chunks")
         print("  ✅ Embedding compatibility confirmed")

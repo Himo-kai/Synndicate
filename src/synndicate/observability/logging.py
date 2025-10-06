@@ -6,13 +6,12 @@ import logging
 import sys
 from contextvars import ContextVar
 from datetime import UTC, datetime
-from typing import Any
 
 # Context variable for trace ID propagation
 trace_id_ctx: ContextVar[str | None] = ContextVar("trace_id", default=None)
 
 # Global logger cache
-_loggers: dict[str, Any] = {}
+_loggers: dict[str, "StructuredLogger"] = {}
 
 
 class StructuredFormatter(logging.Formatter):

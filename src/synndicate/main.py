@@ -12,8 +12,7 @@ except ImportError:
 
 from .config.settings import get_settings
 from .core.determinism import ensure_deterministic_startup
-from .observability.distributed_tracing import (DistributedTracingManager,
-                                                TracingBackend)
+from .observability.distributed_tracing import DistributedTracingManager, TracingBackend
 from .observability.logging import get_logger
 from .observability.tracing import TracingManager
 

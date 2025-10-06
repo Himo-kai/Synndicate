@@ -70,11 +70,8 @@ import asyncio
 import json
 import os
 import sys
-from pathlib import Path
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
-
+# Use editable install: pip install -e .
 import httpx
 
 from synndicate.rag.retriever import RAGRetriever

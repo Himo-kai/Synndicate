@@ -232,7 +232,7 @@ class TestCLIArguments:
         main.main(["--help-extended"])
 
         # Verify help was printed (function should return without error)
-        captured = capsys.readouterr()
+        capsys.readouterr()
         # The function returns early, so no exception should be raised
 
     def test_version_argument(self, capsys):

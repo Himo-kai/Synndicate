@@ -355,7 +355,7 @@ Provide structured feedback with:
 
     async def process(self, query: str, context: dict | None = None) -> AgentResponse:
         """Process review request with enhanced analysis."""
-        response = await super().process(query, context)
+        response: AgentResponse = await super().process(query, context)
 
         # Extract structured review information
         issues = self.extract_review_issues(response.response)

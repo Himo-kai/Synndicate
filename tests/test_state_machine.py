@@ -15,8 +15,7 @@ from enum import Enum
 
 import pytest
 
-from synndicate.core.state_machine import (State, StateContext, StateMachine,
-                                           StateType, Transition)
+from synndicate.core.state_machine import State, StateContext, StateMachine, StateType, Transition
 
 
 # Mock concrete State class for testing (State is abstract)
