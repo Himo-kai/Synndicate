@@ -152,7 +152,6 @@ docs(observability): update tracing configuration guide
 
 ### Future Enhancements
 
-- [ ] SonarCloud integration (if open-sourced)
 - [ ] Advanced security policy enforcement
 - [ ] Automated dependency updates
 - [ ] Release automation workflows
