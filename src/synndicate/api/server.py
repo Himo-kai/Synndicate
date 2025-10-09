@@ -64,23 +64,24 @@ Configuration:
 """
 
 import time
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Any
+from typing import Any, TypedDict, cast
 
-from fastapi import Body, FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from ..config.container import Container, get_container
 from ..config.settings import get_settings
 from ..core.determinism import ensure_deterministic_startup, get_config_hash
 from ..core.orchestrator import Orchestrator
-from ..observability.logging import get_logger, set_trace_id
+from ..observability.distributed_tracing import get_trace_id, set_trace_id
+from ..observability.logging import get_logger
 from ..observability.metrics import get_metrics_registry
-from ..observability.probe import probe
-from ..observability.tracing import get_trace_id
 from .auth import RateLimitTier, UserRole, get_auth_manager
+from .security_middleware import security_middleware
 
 logger = get_logger(__name__)
 
@@ -89,7 +90,15 @@ orchestrator = None
 container = None
 
 
-def _reset_globals_for_tests():
+class UserCtx(TypedDict, total=False):
+    """User context with optional fields for authentication."""
+    user_id: str
+    role: str
+    api_key: str
+    tier: str
+
+
+def _reset_globals_for_tests() -> None:
     """Reset global state for test isolation."""
     global orchestrator, container
     orchestrator = None
@@ -103,14 +112,15 @@ log = logger
 
 
 # Authentication dependency
-async def get_current_user(request: Request):
+async def get_current_user(request: Request) -> UserCtx:
     """Get current authenticated user from request."""
     # Check if API key authentication is required
     if not get_settings().api.require_api_key:
         # Return anonymous user for development/testing
         try:
-            if hasattr(request, "state") and hasattr(request.state, "user") and request.state.user:
-                return request.state.user
+            user_obj = getattr(getattr(request, "state", None), "user", None)
+            if isinstance(user_obj, dict):
+                return cast("dict[str, Any]", user_obj)
         except AttributeError:
             pass
         return {"user_id": "anonymous", "role": "anonymous"}
@@ -162,7 +172,7 @@ class HealthResponse(BaseModel):
 
 # Application startup/shutdown lifecycle
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan manager."""
     global container, orchestrator
 
@@ -183,7 +193,51 @@ async def lifespan(app: FastAPI):
         seed, config_hash = ensure_deterministic_startup(settings)
         logger.info("Deterministic startup complete", seed=seed, config_hash=config_hash[:16])
 
-    # Initialize container and orchestrator
+    # 🔥 CRITICAL: Initialize tracing BEFORE orchestrator/agents
+    # This ensures tracer provider is set globally before any agent construction
+    logger.info("🔧 Starting tracing initialization...")
+
+    try:
+        from ..observability.distributed_tracing import (
+            DistributedTracingConfig,
+            TracingBackend,
+            setup_distributed_tracing,
+        )
+        logger.info("✅ Tracing imports successful")
+
+        # Get tracing backend from environment (defaults to console for Phase 4)
+        tracing_backend_str = os.getenv("TRACING_BACKEND", "console").lower()
+        logger.info(f"🎯 Tracing backend from env: {tracing_backend_str}")
+
+        tracing_backend = TracingBackend(tracing_backend_str)
+        logger.info(f"✅ TracingBackend enum created: {tracing_backend}")
+
+        # Create tracing config
+        tracing_config = DistributedTracingConfig(
+            backend=tracing_backend,
+            service_name="synndicate-api",
+            service_version="2.0.0"
+        )
+        logger.info(f"✅ Tracing config created: backend={tracing_backend.value}")
+
+        # Setup tracing - this calls trace.set_tracer_provider() internally
+        tracer_provider = setup_distributed_tracing(tracing_config)
+        logger.info(f"🎉 Tracing setup complete! Backend: {tracing_backend.value}, Provider: {tracer_provider}")
+
+        # Verify global manager was set
+        from ..observability.distributed_tracing import get_distributed_tracing_manager
+        manager = get_distributed_tracing_manager()
+        logger.info(f"🔍 Global tracing manager check: {manager is not None}")
+        if manager:
+            logger.info(f"🔍 Manager setup state: {manager._is_setup}")
+
+    except Exception as e:
+        import traceback
+        logger.error(f"❌ Failed to initialize tracing: {e}")
+        logger.error(f"❌ Traceback: {traceback.format_exc()}")
+        # Continue without tracing rather than failing startup
+
+    # Initialize container and orchestrator (AFTER tracing setup)
     container = Container()
     orchestrator = Orchestrator(container)
 
@@ -214,24 +268,102 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    # Add CORS middleware
+    # Add Phase 4 Security Middleware (STRIDE controls)
+    app.middleware("http")(security_middleware)
+
+    # Add CORS middleware with security restrictions
     if settings.api.enable_cors:
+        # Restrict CORS origins - never use wildcard in production
+        cors_origins = settings.api.cors_origins
+        if "*" in cors_origins and not settings.debug:
+            logger.warning("Wildcard CORS disabled in production for security")
+            cors_origins = ["https://app.synndicate.com"]  # Replace with actual frontend
+
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=settings.api.cors_origins,
+            allow_origins=cors_origins,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],  # Restrict methods
+            allow_headers=["authorization", "content-type", "x-request-id"],  # Restrict headers
+            expose_headers=["x-request-id"],
         )
 
     # Register routes
     @app.get("/health", response_model=HealthResponse)
-    async def health_check_endpoint(request: Request):
+    async def health_check_endpoint(request: Request) -> HealthResponse:
         """Health check endpoint."""
-        return await health_check(request)
+        # Add trace ID to response headers
+        trace_id = get_trace_id()
+        set_trace_id(trace_id)
+
+        startup_time = getattr(app.state, "startup_time", time.time())
+        uptime = max(0.0, time.time() - startup_time)
+
+        # Check component health
+        components = {
+            "config": "healthy",
+        }
+
+        # Check orchestrator health by actually calling health_check
+        try:
+            if orchestrator and hasattr(orchestrator, "health_check"):
+                await orchestrator.health_check()
+                components["orchestrator"] = "healthy"
+            elif orchestrator:
+                components["orchestrator"] = "healthy"
+            else:
+                components["orchestrator"] = "not_initialized"
+        except Exception:
+            components["orchestrator"] = "error"
+
+        # Check container health by trying to access it
+        try:
+            current_container = get_container()
+            components["container"] = "healthy" if current_container else "not_initialized"
+        except Exception:
+            components["container"] = "error"
+
+        # Check model health if available
+        try:
+            if container and hasattr(container, "model_manager"):
+                model_manager = container.model_manager
+                if hasattr(model_manager, "health_check"):
+                    health_status = await model_manager.health_check()
+                    components["models"] = (
+                        "healthy" if health_status.get("healthy", False) else "unhealthy"
+                    )
+                else:
+                    components["models"] = "unknown"
+            else:
+                components["models"] = "not_available"
+        except Exception as e:
+            components["models"] = f"error: {str(e)}"
+
+        # Check tracing health
+        try:
+            from ..observability.distributed_tracing import get_distributed_tracing_manager
+            manager = get_distributed_tracing_manager()
+            if manager and manager._is_setup:
+                components["tracing"] = "initialized"
+            else:
+                components["tracing"] = "not_initialized"
+        except Exception as e:
+            components["tracing"] = f"error: {str(e)}"
+
+        return HealthResponse(
+            status=(
+                "healthy"
+                if all(comp in ["healthy", "unknown", "not_available"] for comp in components.values())
+                else "unhealthy"
+            ),
+            version="2.0.0",
+            config_hash=getattr(app.state, "config_hash", "unknown"),
+            uptime_seconds=uptime,
+            components=components,
+        )
 
     @app.post("/query", response_model=QueryResponse)
-    async def process_query_endpoint(request: QueryRequest, http_request: Request):
+    async def process_query_endpoint(request: QueryRequest, http_request: Request) -> QueryResponse:
         """Process a query through the orchestrator."""
         # Handle authentication manually since decorator approach has parameter binding issues
         settings = get_settings()
@@ -272,149 +404,25 @@ def create_app() -> FastAPI:
                 # Handle any other authentication errors
                 raise HTTPException(status_code=401, detail="Authentication failed") from e
 
-        return await process_query(http_request, request)
+        # Get orchestrator (try container first, then global)
+        current_orchestrator = orchestrator
+        if not current_orchestrator:
+            try:
+                container_instance = get_container()
+                if container_instance and hasattr(container_instance, "get_orchestrator"):
+                    current_orchestrator = container_instance.get_orchestrator()
+            except Exception:
+                pass
 
-    @app.get("/metrics")
-    async def get_metrics_endpoint(request: Request):
-        """Get system metrics in Prometheus format."""
-        return await get_metrics(request)
+        if not current_orchestrator:
+            raise HTTPException(status_code=503, detail="Orchestrator not initialized")
 
-    # Add global exception handler
-    @app.exception_handler(Exception)
-    async def global_exception_handler_endpoint(request: Request, exc: Exception):
-        """Global exception handler."""
-        return await global_exception_handler(request, exc)
+        # Generate trace ID for this request
+        import time
+        trace_id = f"{int(time.time() * 1000):x}{hash(request.query) & 0xFFFF:04x}"
+        set_trace_id(trace_id)
 
-    return app
-
-
-# Create app instance
-app = create_app()
-
-
-@app.get("/health", response_model=HealthResponse)
-async def health_check(request: Request):
-    """Health check endpoint."""
-    # Add trace ID to response headers
-    trace_id = get_trace_id()
-
-    startup_time = getattr(app.state, "startup_time", time.time())
-    uptime = max(0.0, time.time() - startup_time)
-
-    # Check component health
-    components = {
-        "config": "healthy",
-    }
-
-    # Check orchestrator health by actually calling health_check
-    try:
-        if orchestrator and hasattr(orchestrator, "health_check"):
-            await orchestrator.health_check()
-            components["orchestrator"] = "healthy"
-        elif orchestrator:
-            components["orchestrator"] = "healthy"
-        else:
-            components["orchestrator"] = "not_initialized"
-    except Exception:
-        components["orchestrator"] = "error"
-
-    # Check container health by trying to access it
-    try:
-        current_container = get_container()
-        components["container"] = "healthy" if current_container else "not_initialized"
-    except Exception:
-        components["container"] = "error"
-
-    # Check model health if available
-    try:
-        if container and hasattr(container, "model_manager"):
-            model_manager = container.model_manager
-            if hasattr(model_manager, "health_check"):
-                health_status = await model_manager.health_check()
-                components["models"] = (
-                    "healthy" if health_status.get("healthy", False) else "unhealthy"
-                )
-            else:
-                components["models"] = "unknown"
-        else:
-            components["models"] = "not_available"
-    except Exception as e:
-        components["models"] = f"error: {str(e)}"
-
-    health_response = HealthResponse(
-        status=(
-            "healthy"
-            if all(
-                status in ["healthy", "not_available", "unknown", "not_initialized"]
-                for status in components.values()
-            )
-            else "unhealthy"
-        ),
-        version="2.0.0",
-        config_hash=getattr(app.state, "config_hash", get_config_hash() or "test_config_hash"),
-        uptime_seconds=uptime,
-        components=components,
-    )
-
-    # Return JSONResponse with headers to include trace information
-    from fastapi.responses import JSONResponse
-
-    return JSONResponse(
-        content=health_response.model_dump(),
-        headers={"x-request-id": trace_id, "trace-id": trace_id},
-    )
-
-
-@app.post("/query", response_model=QueryResponse)
-async def process_query(http_request: Request, request: QueryRequest = Body(...)):
-    """Process a query through the orchestrator."""
-    # Handle authentication first - this must succeed before proceeding
-    settings = get_settings()
-    auth_manager = get_auth_manager()
-    if auth_manager and settings.api.require_api_key:
-        try:
-            api_key, tier = await auth_manager.authenticate_request(http_request)
-            # Check if authentication actually succeeded
-            if not api_key or tier == RateLimitTier.ANONYMOUS:
-                raise HTTPException(status_code=401, detail="API key required")
-
-            # Check rate limiting after successful authentication
-            is_limited, limit_info = auth_manager.rate_limiter.is_rate_limited(
-                http_request, tier, api_key
-            )
-            if is_limited:
-                error_detail = limit_info.get("error", "Rate limit exceeded")
-                retry_after = limit_info.get("retry_after", 60)
-                raise HTTPException(
-                    status_code=429, detail=error_detail, headers={"Retry-After": str(retry_after)}
-                )
-        except HTTPException as e:
-            # Re-raise authentication errors immediately
-            raise e
-        except Exception as e:
-            # Handle any other authentication errors
-            raise HTTPException(status_code=401, detail="Authentication failed") from e
-
-    # Get orchestrator (try container first, then global)
-    current_orchestrator = orchestrator
-    if not current_orchestrator:
-        try:
-            container_instance = get_container()
-            if container_instance and hasattr(container_instance, "get_orchestrator"):
-                current_orchestrator = container_instance.get_orchestrator()
-        except Exception:
-            pass
-
-    if not current_orchestrator:
-        raise HTTPException(status_code=503, detail="Orchestrator not initialized")
-
-    # Generate trace ID for this request
-    trace_id = f"{int(time.time() * 1000):x}{hash(request.query) & 0xFFFF:04x}"
-    set_trace_id(trace_id)
-
-    start_time = time.time()
-
-    with probe("api.process_query", trace_id):
+        start_time = time.time()
         logger.info("Processing API query", trace_id=trace_id, query_length=len(request.query))
 
         try:
@@ -472,119 +480,122 @@ async def process_query(http_request: Request, request: QueryRequest = Body(...)
 
             return response
 
+    @app.get("/metrics")
+    async def get_metrics_endpoint(request: Request) -> PlainTextResponse:
+        """Get system metrics in Prometheus format."""
+        # Handle authentication for admin-only endpoint
+        settings = get_settings()
+        auth_manager = get_auth_manager()
+        if auth_manager and settings.api.require_api_key:
+            try:
+                api_key, tier = await auth_manager.authenticate_request(request)
+                # Check role permissions for admin access
+                if (
+                    api_key
+                    and UserRole(api_key.role).privilege_level < UserRole.ADMIN.privilege_level
+                ):
+                    raise HTTPException(
+                        status_code=403,
+                        detail=f"Insufficient permissions. Required: {UserRole.ADMIN}",
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=401, detail="Authentication failed") from e
 
-@app.get("/metrics")
-async def get_metrics(request: Request):
-    """Get system metrics in Prometheus format."""
-    # Handle authentication for admin-only endpoint
-    settings = get_settings()
-    auth_manager = get_auth_manager()
-    if auth_manager and settings.api.require_api_key:
         try:
-            api_key, tier = await auth_manager.authenticate_request(request)
-            # Check if user has admin role for metrics access
-            if tier != "admin":
-                raise HTTPException(status_code=401, detail="Admin access required")
-        except HTTPException as e:
-            if e.status_code == 401:
-                raise HTTPException(status_code=401, detail="Authentication required") from e
-            raise
+            registry = get_metrics_registry()
 
-    # Get metrics registry and generate Prometheus format
-    try:
-        registry = get_metrics_registry()
+            # Generate Prometheus format metrics
+            metrics_output = []
 
-        # Generate Prometheus format metrics
-        metrics_output = []
+            # Request metrics
+            metrics_output.append("# HELP synndicate_requests_total Total number of requests")
+            metrics_output.append("# TYPE synndicate_requests_total counter")
+            metrics_output.append(
+                f"synndicate_requests_total {registry.get_counter('requests_total', 0)}"
+            )
 
-        # Request metrics
-        metrics_output.append("# HELP synndicate_requests_total Total number of requests")
-        metrics_output.append("# TYPE synndicate_requests_total counter")
-        metrics_output.append(
-            f"synndicate_requests_total {registry.get_counter('requests_total', 0)}"
-        )
+            # Response time metrics
+            metrics_output.append("# HELP synndicate_response_time_seconds Response time in seconds")
+            metrics_output.append("# TYPE synndicate_response_time_seconds histogram")
+            metrics_output.append(
+                f"synndicate_response_time_seconds_sum {registry.get_histogram_sum('response_time', 0.0)}"
+            )
+            metrics_output.append(
+                f"synndicate_response_time_seconds_count {registry.get_histogram_count('response_time', 0)}"
+            )
 
-        # Response time metrics
-        metrics_output.append("# HELP synndicate_response_time_seconds Response time in seconds")
-        metrics_output.append("# TYPE synndicate_response_time_seconds histogram")
-        metrics_output.append(
-            f"synndicate_response_time_seconds_sum {registry.get_histogram_sum('response_time', 0.0)}"
-        )
-        metrics_output.append(
-            f"synndicate_response_time_seconds_count {registry.get_histogram_count('response_time', 0)}"
-        )
+            # Active connections
+            metrics_output.append("# HELP synndicate_active_connections Number of active connections")
+            metrics_output.append("# TYPE synndicate_active_connections gauge")
+            metrics_output.append(
+                f"synndicate_active_connections {registry.get_gauge('active_connections', 0)}"
+            )
 
-        # Active connections
-        metrics_output.append("# HELP synndicate_active_connections Number of active connections")
-        metrics_output.append("# TYPE synndicate_active_connections gauge")
-        metrics_output.append(
-            f"synndicate_active_connections {registry.get_gauge('active_connections', 0)}"
-        )
+            # Orchestrator executions
+            metrics_output.append(
+                "# HELP synndicate_orchestrator_executions_total Total orchestrator executions"
+            )
+            metrics_output.append("# TYPE synndicate_orchestrator_executions_total counter")
+            metrics_output.append(
+                f"synndicate_orchestrator_executions_total {registry.get_counter('orchestrator_executions', 0)}"
+            )
 
-        # Orchestrator executions
-        metrics_output.append(
-            "# HELP synndicate_orchestrator_executions_total Total orchestrator executions"
-        )
-        metrics_output.append("# TYPE synndicate_orchestrator_executions_total counter")
-        metrics_output.append(
-            f"synndicate_orchestrator_executions_total {registry.get_counter('orchestrator_executions', 0)}"
-        )
+            metrics_text = "\n".join(metrics_output) + "\n"
+            return PlainTextResponse(content=metrics_text, media_type="text/plain")
 
-        # Agent invocations
-        metrics_output.append("# HELP synndicate_agent_invocations_total Total agent invocations")
-        metrics_output.append("# TYPE synndicate_agent_invocations_total counter")
-        metrics_output.append(
-            f"synndicate_agent_invocations_total {registry.get_counter('agent_invocations', 0)}"
-        )
+        except Exception as e:
+            logger.error(f"Failed to generate metrics: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate metrics") from e
 
-        metrics_text = "\n".join(metrics_output) + "\n"
+    # Add global exception handler
+    @app.exception_handler(Exception)
+    async def global_exception_handler_endpoint(request: Request, exc: Exception) -> JSONResponse:
+        """Global exception handler."""
+        # Handle HTTPException differently
+        if isinstance(exc, HTTPException):
+            return JSONResponse(
+                status_code=exc.status_code,
+                content={
+                    "error": "HTTP Exception",
+                    "message": exc.detail,
+                    "trace_id": str(getattr(request.state, "trace_id", "unknown")),
+                },
+            )
 
-        from fastapi.responses import PlainTextResponse
+        # Log the error with proper formatting
+        try:
+            path = (
+                request.url.path
+                if hasattr(request, "url") and hasattr(request.url, "path")
+                else "unknown"
+            )
+        except (AttributeError, TypeError):
+            path = "unknown"
+        logger.error(f"Unhandled API exception at {path}: {exc}")
 
-        return PlainTextResponse(content=metrics_text, media_type="text/plain")
-
-    except Exception as e:
-        logger.error(f"Failed to generate metrics: {e}")
-        raise HTTPException(status_code=500, detail="Failed to generate metrics") from e
-
-
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    """Global exception handler."""
-    # Handle HTTPException differently
-    if isinstance(exc, HTTPException):
         return JSONResponse(
-            status_code=exc.status_code,
+            status_code=500,
             content={
-                "error": "HTTP Exception",
-                "message": exc.detail,
+                "error": "Internal server error",
+                "message": (
+                    str(exc)
+                    if get_settings().environment == "development"
+                    else "An unexpected error occurred"
+                ),
                 "trace_id": str(getattr(request.state, "trace_id", "unknown")),
             },
         )
 
-    # Log the error with proper formatting
-    try:
-        path = (
-            request.url.path
-            if hasattr(request, "url") and hasattr(request.url, "path")
-            else "unknown"
-        )
-    except (AttributeError, TypeError):
-        path = "unknown"
-    logger.error(f"Unhandled API exception at {path}: {exc}")
+    return app
 
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Internal server error",
-            "message": (
-                str(exc)
-                if get_settings().environment == "development"
-                else "An unexpected error occurred"
-            ),
-            "trace_id": str(getattr(request.state, "trace_id", "unknown")),
-        },
-    )
+
+# Create app instance
+app = create_app()
+
+
+
 
 
 if __name__ == "__main__":

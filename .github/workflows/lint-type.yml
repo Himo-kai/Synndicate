@@ -1,0 +1,75 @@
+name: Lint & Type Check
+on:
+  pull_request:
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  lint-and-type:
+    runs-on: ubuntu-latest
+    name: Code Quality & Type Safety
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt || echo "No requirements.txt found"
+          pip install ruff mypy
+
+      - name: Run Ruff Linter
+        run: |
+          echo "🔍 Running Ruff linter..."
+          ruff check src tests --config pyproject.toml --output-format=github
+
+      - name: Run Ruff Formatter Check
+        run: |
+          echo "🎨 Checking code formatting..."
+          ruff format --check src tests --config pyproject.toml
+
+      - name: Run MyPy Type Check (Strict Mode)
+        run: |
+          echo "🔬 Running MyPy type checking (strict mode)..."
+          mypy src/synndicate --config-file pyproject.toml --sqlite-cache --show-error-codes
+
+      - name: Run MyPy on Tests (Permissive)
+        run: |
+          echo "🧪 Running MyPy on tests (permissive mode)..."
+          mypy tests --config-file pyproject.toml --sqlite-cache --show-error-codes || true
+
+      - name: Generate Type Coverage Report
+        run: |
+          echo "📊 Generating type coverage report..."
+          mypy src/synndicate --config-file pyproject.toml --html-report mypy-report --sqlite-cache || true
+
+      - name: Upload MyPy Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mypy-report
+          path: mypy-report/
+          retention-days: 7
+
+      - name: Lint Summary
+        if: always()
+        run: |
+          echo "✅ Code quality checks completed!"
+          echo "📋 Summary:"
+          echo "  - Ruff linting: Check output above"
+          echo "  - Code formatting: Check output above" 
+          echo "  - MyPy type safety: Check output above"
+          echo "  - Type coverage report: Available in artifacts"

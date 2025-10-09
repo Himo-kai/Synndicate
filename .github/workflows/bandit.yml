@@ -1,0 +1,50 @@
+name: Bandit Security Linter
+on:
+  pull_request:
+  push:
+    branches: [ main, develop ]
+
+jobs:
+  bandit:
+    runs-on: ubuntu-latest
+    name: Python Security Analysis
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Install Bandit
+        run: |
+          pip install --upgrade pip
+          pip install bandit[toml]
+
+      - name: Run Bandit Security Scan
+        run: |
+          bandit -r src/synndicate \
+            -ll \
+            -ii \
+            -f json \
+            -o bandit-report.json \
+            --exclude '*/__pycache__/*,*/test_*,*/tests/*' \
+            --skip B101,B601 \
+            || true
+
+      - name: Run Bandit Security Scan (Human Readable)
+        run: |
+          bandit -r src/synndicate \
+            -ll \
+            -ii \
+            --exclude '*/__pycache__/*,*/test_*,*/tests/*' \
+            --skip B101,B601
+
+      - name: Upload Bandit Results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bandit-results
+          path: bandit-report.json
+          retention-days: 30

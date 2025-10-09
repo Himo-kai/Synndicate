@@ -1,16 +1,75 @@
-name: Simple Test
+name: Test Suite
 
 on:
+  pull_request:
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.13']
+    name: Test Python ${{ matrix.python-version }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Test basic functionality
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install dependencies
         run: |
-          echo "✅ Checkout successful"
-          ls -la
-          echo "✅ Repository contents visible"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || echo "No requirements.txt found"
+          pip install pytest pytest-cov pytest-asyncio pytest-mock coverage[toml]
+
+      - name: Run tests with coverage
+        run: |
+          echo "🧪 Running test suite with coverage..."
+          python -m pytest tests/ \
+            --cov=src/synndicate \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-report=term-missing \
+            --cov-fail-under=70 \
+            --junitxml=pytest-results.xml \
+            -v
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-reports-${{ matrix.python-version }}
+          path: |
+            coverage.xml
+            htmlcov/
+            pytest-results.xml
+          retention-days: 30
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          file: ./coverage.xml
+          flags: unittests
+          name: codecov-umbrella
+          fail_ci_if_error: false
+
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "✅ Test suite completed!"
+          echo "📊 Coverage report generated"
+          echo "📋 Results uploaded to artifacts"

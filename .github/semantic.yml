@@ -1,0 +1,40 @@
+titleOnly: true
+titleAndCommits: false
+commitsOnly: false
+anyCommit: false
+allowMergeCommits: false
+allowRevertCommits: false
+
+# Synndicate-specific scopes matching project structure
+scopes:
+  - api          # API endpoints, server, auth
+  - core         # Core orchestrator, determinism, container
+  - rag          # RAG pipeline, retrieval, vectorstore
+  - models       # Model management, multimodal agents
+  - observability # Metrics, logging, tracing, monitoring
+  - agents       # Agent implementations and workflows
+  - config       # Configuration, settings, environment
+  - security     # Authentication, authorization, middleware
+  - tests        # Test files, fixtures, test utilities
+  - docs         # Documentation, README, guides
+  - build        # Build scripts, Docker, dependencies
+  - ci           # CI/CD workflows, GitHub actions
+  - perf         # Performance optimizations, benchmarks
+  - refactor     # Code restructuring, cleanup
+  - fix          # Bug fixes, hotfixes
+  - feat         # New features, enhancements
+  - chore        # Maintenance, updates, housekeeping
+
+# Valid types (conventional commits)
+types:
+  - feat
+  - fix
+  - docs
+  - style
+  - refactor
+  - perf
+  - test
+  - chore
+  - ci
+  - build
+  - revert
